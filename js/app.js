@@ -14,7 +14,8 @@ const ROUTES = [
   [/^#\/more$/, () => V.more()],
   [/^#\/settings$/, () => V.settings()],
   [/^#\/backup$/, () => V.backup()],
-  [/^#\/help$/, () => V.help()]
+  [/^#\/help$/, () => V.help()],
+  [/^#\/bot$/, () => V.bot()]
 ];
 
 function route() {

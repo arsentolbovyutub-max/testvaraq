@@ -15,5 +15,5 @@ Students groups teachers management,people,must,yes,yes,bulk add from list
 Answer key PDF,pdf,must,yes,yes,
 Answer sheets PDF,pdf,must,yes,yes,named + QR per student; blank sheets
 Results PDF + share from phone,pdf,must,yes,yes,Web Share API / Telegram share link
-Students solve test in center's Telegram bot,telegram,should,yes,no,needs a server + database + bot token (follow-up)
+Students solve test in center's Telegram bot,telegram,should,yes,yes,Vercel functions + Upstash Redis; webhook per center
 Multi-device cloud sync,platform,should,yes,partial,JSON backup export/import only

@@ -1,7 +1,7 @@
 /* Offline cache: app shell + CDN libraries. Network first for the shell so updates arrive. */
-const CACHE = 'testvaraq-v1';
+const CACHE = 'testvaraq-v2';
 const SHELL = ['./', 'index.html', 'css/app.css', 'icon.svg', 'manifest.webmanifest',
-  'js/util.js', 'js/db.js', 'js/scoring.js', 'js/sheet.js', 'js/omr.js', 'js/pdf.js', 'js/views.js', 'js/scan.js', 'js/app.js'];
+  'js/util.js', 'js/db.js', 'js/scoring.js', 'js/sheet.js', 'js/omr.js', 'js/pdf.js', 'js/views.js', 'js/scan.js', 'js/bot.js', 'js/app.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

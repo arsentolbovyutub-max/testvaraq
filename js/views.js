@@ -289,6 +289,7 @@ const V = {
           ${isR ? `<td class="num">${x.ev.correct}/${x.ev.total}</td><td class="num"><b>${x.T}</b></td><td><span class="pill">${x.grade}</span></td>`
                : `<td class="num">${x.ev.correct}/${x.ev.total}</td><td class="num"><b>${x.ev.points}</b>${x.ev.sections.some(s => s.cert) ? ' <span class="badge">S</span>' : ''}</td><td class="num">${x.ev.percent}%</td>`}</tr>`).join('')}
       </tbody></table></div>` : emptyBox('⌖', "Hali natija yo'q. Javob varaqalarini skanerlang.")}`;
+    botCard(t, c);
     $$('[data-r]', c).forEach(tr => tr.onclick = () => location.hash = `#/result/${tr.dataset.r}`);
     $('#man', c).onclick = () => manualResult(t);
     if ($('#rpdf', c)) $('#rpdf', c).onclick = () => shareOrDownload(PDF.results(t), `natijalar_${PDF.fname(t.name)}.pdf`);
@@ -457,6 +458,7 @@ const V = {
         <div class="small muted" style="margin-top:8px">${esc(DB.data.center.name)}</div></div>
       <a class="li" href="#/groups"><span class="av">☷</span><span class="sp t">Guruhlar</span>›</a>
       ${adm ? `<a class="li" href="#/teachers"><span class="av">☻</span><span class="sp t">O'qituvchilar</span>›</a>` : ''}
+      ${adm ? `<a class="li" href="#/bot"><span class="av">✈</span><span class="sp t">Telegram bot</span>${DB.data.settings.bot ? '<span class="badge">ulangan</span>' : ''}›</a>` : ''}
       ${adm ? `<a class="li" href="#/settings"><span class="av">⚙</span><span class="sp t">Sozlamalar va milliy sertifikat</span>›</a>` : ''}
       <a class="li" href="#/backup"><span class="av">⇅</span><span class="sp t">Zaxira nusxa (eksport / import)</span>›</a>
       <a class="li" href="#/help"><span class="av">?</span><span class="sp t">Qo'llanma</span>›</a>

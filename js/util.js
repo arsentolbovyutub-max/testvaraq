@@ -21,7 +21,7 @@ function fmtDate(d) {
   const p = n => String(n).padStart(2, '0');
   return `${p(x.getDate())}.${p(x.getMonth() + 1)}.${x.getFullYear()}`;
 }
-function today() { return new Date().toISOString().slice(0, 10); }
+function today() { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
 
 function initials(name) {
   return String(name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';

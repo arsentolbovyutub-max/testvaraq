@@ -1,0 +1,8 @@
+{
+  "name": "testvaraq",
+  "version": "2.0.0",
+  "private": true,
+  "description": "O'quv markaz test platformasi: varaq skanerlash, blok/oddiy/Rasch testlar, Excel hisoblash, Telegram bot",
+  "engines": { "node": ">=18" },
+  "scripts": { "test": "node tests/run.js" }
+}

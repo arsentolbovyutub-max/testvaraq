@@ -1,72 +1,86 @@
-/* Admin API used by the app: connect a bot, publish/close tests, pull results. */
-const L = require('./_lib');
+/* Markaz botini boshqarish: ulash, holat, uzish, natija yuborish, ommaviy xabar. */
+const { kv, rid, K, readBody, send, auth, tg } = require('./_lib');
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 module.exports = async (req, res) => {
-  res.setHeader('Cache-Control', 'no-store');
-  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
-  const b = await L.readBody(req);
+  if (req.method !== 'POST') return send(res, 405, { error: 'POST kerak' });
+  const b = await readBody(req);
+  const a = await auth(b.token).catch(() => null);
+  if (!a) return send(res, 401, { error: "Avval bulut sinxronlashni yoqing (Yana → Bulut sinxronlash)" });
+  const cid = a.cid;
   try {
-    if (!L.redisCfg()) return res.status(503).json({ error: "Server bazasi (Redis) ulanmagan. Vercel → Storage bo'limida Upstash Redis qo'shing." });
-
-    if (b.action === 'setup') {
-      const token = String(b.token || '').trim();
-      if (!/^\d+:[\w-]{30,}$/.test(token)) return res.status(400).json({ error: "Bot token formati noto'g'ri" });
-      const me = await L.tg(token, 'getMe');
-      if (!me.ok) return res.status(400).json({ error: "Token ishlamadi: " + (me.description || '') });
-      let cid = b.cid, key = b.key, old = cid ? await L.getJ('c:' + cid) : null;
-      if (!old || old.keyHash !== L.sha(key)) { cid = L.rand(9).replace(/[^\w]/g, 'x'); key = L.rand(24); }
-      const whSecret = L.rand(24).replace(/[^\w]/g, 'x');
-      const host = req.headers['x-forwarded-host'] || req.headers.host;
-      const wh = await L.tg(token, 'setWebhook', { url: `https://${host}/api/tg?c=${cid}`, secret_token: whSecret, allowed_updates: ['message', 'callback_query'], drop_pending_updates: true });
-      if (!wh.ok) return res.status(400).json({ error: 'Webhook xatosi: ' + (wh.description || '') });
-      await L.tg(token, 'setMyCommands', { commands: [{ command: 'start', description: 'Boshlash' }, { command: 'testlar', description: 'Ochiq testlar' }, { command: 'natijalar', description: 'Natijalarim' }] });
-      await L.setJ('c:' + cid, { token, keyHash: L.sha(key), name: String(b.name || '').slice(0, 80), username: me.result.username, whSecret });
-      return res.json({ cid, key, username: me.result.username });
+    const cfgS = await kv('GET', K.bot(cid));
+    const cfg = cfgS ? JSON.parse(cfgS) : null;
+    switch (b.action) {
+      case 'setup': {
+        const token = String(b.botToken || '').trim();
+        if (!/^\d+:[\w-]{30,}$/.test(token)) return send(res, 400, { error: "Token formati noto'g'ri (123456789:AA… ko'rinishida)" });
+        const me = await tg(token, 'getMe');
+        if (!me.ok) return send(res, 400, { error: 'Telegram tokenni qabul qilmadi: ' + (me.description || '') });
+        const host = req.headers['x-forwarded-host'] || req.headers.host;
+        const secret = rid(16);
+        const hook = await tg(token, 'setWebhook', { url: `https://${host}/api/tg?c=${cid}`, secret_token: secret, allowed_updates: ['message', 'callback_query'], drop_pending_updates: true });
+        if (!hook.ok) return send(res, 400, { error: 'Webhook o‘rnatilmadi: ' + (hook.description || '') });
+        await tg(token, 'setMyCommands', { commands: [
+          { command: 'start', description: 'Boshlash' }, { command: 'test', description: 'Test yechish' },
+          { command: 'natijalar', description: 'Natijalarim' }, { command: 'profil', description: 'Profil va o‘sish' },
+          { command: 'murojaat', description: 'O‘qituvchiga murojaat' }] });
+        await kv('SET', K.bot(cid), JSON.stringify({ token, username: me.result.username, secret, name: b.centerName || '' }));
+        return send(res, 200, { username: me.result.username });
+      }
+      case 'status': {
+        if (!cfg) return send(res, 200, { connected: false });
+        const info = await tg(cfg.token, 'getWebhookInfo');
+        const linked = await kv('HLEN', K.links(cid));
+        return send(res, 200, { connected: true, username: cfg.username, linked, pending: info.result ? info.result.pending_update_count : null, lastError: info.result ? info.result.last_error_message || null : null });
+      }
+      case 'disconnect': {
+        if (cfg) await tg(cfg.token, 'deleteWebhook', {});
+        await kv('DEL', K.bot(cid));
+        return send(res, 200, { ok: true });
+      }
+      case 'notify': {
+        if (!cfg) return send(res, 400, { error: 'Bot ulanmagan' });
+        const items = (Array.isArray(b.items) ? b.items : []).slice(0, 300);
+        let sent = 0, failed = 0;
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i];
+          if (!it.chatId || !it.text) { failed++; continue; }
+          const r = await tg(cfg.token, 'sendMessage', { chat_id: it.chatId, text: String(it.text).slice(0, 4000) });
+          if (r.ok) sent++; else failed++;
+          if (i % 25 === 24) await sleep(1000);
+        }
+        return send(res, 200, { sent, failed });
+      }
+      case 'broadcast': {
+        if (!cfg) return send(res, 400, { error: 'Bot ulanmagan' });
+        const text = String(b.text || '').slice(0, 1000);
+        if (!text && !b.photo) return send(res, 400, { error: 'Matn kiriting' });
+        let chats = await kv('HKEYS', K.links(cid)) || [];
+        if (Array.isArray(b.chatIds) && b.chatIds.length) { const set = new Set(b.chatIds.map(String)); chats = chats.filter(c => set.has(String(c))); }
+        let photo = null;
+        if (b.photo) {
+          const m = /^data:(image\/\w+);base64,(.+)$/.exec(b.photo);
+          if (m) photo = { buf: Buffer.from(m[2], 'base64'), type: m[1] };
+        }
+        let sent = 0, failed = 0, fileId = null;
+        for (let i = 0; i < chats.length; i++) {
+          let r;
+          if (photo && !fileId) {
+            r = await tg(cfg.token, 'sendPhoto', { chat_id: chats[i], caption: text }, { field: 'photo', buf: photo.buf, type: photo.type, name: 'rasm.jpg' });
+            if (r.ok && r.result && r.result.photo) fileId = r.result.photo[r.result.photo.length - 1].file_id;
+          } else if (fileId) r = await tg(cfg.token, 'sendPhoto', { chat_id: chats[i], photo: fileId, caption: text });
+          else r = await tg(cfg.token, 'sendMessage', { chat_id: chats[i], text });
+          if (r && r.ok) sent++; else failed++;
+          if (i % 25 === 24) await sleep(1000);
+        }
+        return send(res, 200, { total: chats.length, sent, failed });
+      }
+      default: return send(res, 400, { error: "Noma'lum amal" });
     }
-
-    const c = b.cid ? await L.getJ('c:' + b.cid) : null;
-    if (!c || c.keyHash !== L.sha(b.key)) return res.status(401).json({ error: 'Bot ulanmagan yoki kalit noto‘g‘ri' });
-
-    if (b.action === 'status') {
-      const open = await L.redis('SMEMBERS', 'tl:' + b.cid);
-      if (b.name && b.name !== c.name) { c.name = String(b.name).slice(0, 80); await L.setJ('c:' + b.cid, c); }
-      return res.json({ username: c.username, open: open || [] });
-    }
-
-    if (b.action === 'publish') {
-      const t = b.test;
-      if (!t || !t.id || !Array.isArray(t.sections) || !Array.isArray(t.variants)) return res.status(400).json({ error: 'Test noto‘g‘ri' });
-      const n = L.qCount(t);
-      if (n < 1 || n > 200) return res.status(400).json({ error: 'Savollar soni noto‘g‘ri' });
-      if (t.variants.some(v => typeof v.key !== 'string' || v.key.length !== n || v.key.includes('-'))) return res.status(400).json({ error: "Javob kaliti to'liq emas" });
-      const clean = { id: String(t.id), name: String(t.name || '').slice(0, 120), type: t.type, date: t.date, sections: t.sections.map(s => ({ title: String(s.title).slice(0, 60), count: +s.count, weight: +s.weight })), variants: t.variants.map(v => ({ code: String(v.code).slice(0, 2), key: v.key })), open: true };
-      await L.setJ(`t:${b.cid}:${clean.id}`, clean);
-      await L.redis('SADD', 'tl:' + b.cid, clean.id);
-      return res.json({ ok: true });
-    }
-
-    if (b.action === 'close') {
-      const t = await L.getJ(`t:${b.cid}:${b.testId}`);
-      if (t) { t.open = false; await L.setJ(`t:${b.cid}:${b.testId}`, t); }
-      await L.redis('SREM', 'tl:' + b.cid, String(b.testId));
-      return res.json({ ok: true });
-    }
-
-    if (b.action === 'results') {
-      const h = await L.redis('HGETALL', `r:${b.cid}:${b.testId}`) || [];
-      const out = [];
-      for (let i = 0; i < h.length; i += 2) { try { out.push(Object.assign({ tgId: h[i] }, JSON.parse(h[i + 1]))); } catch (e) {} }
-      return res.json({ results: out });
-    }
-
-    if (b.action === 'disconnect') {
-      await L.tg(c.token, 'deleteWebhook', {});
-      await L.redis('DEL', 'c:' + b.cid);
-      return res.json({ ok: true });
-    }
-
-    return res.status(400).json({ error: 'Noma’lum amal' });
   } catch (e) {
-    return res.status(500).json({ error: e.message === 'NO_DB' ? 'Server bazasi ulanmagan' : e.message });
+    console.error(e);
+    return send(res, 500, { error: 'Server xatosi: ' + e.message });
   }
 };

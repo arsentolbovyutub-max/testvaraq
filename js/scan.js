@@ -1,4 +1,4 @@
-/* Scanner screen: live camera with auto-detect, photo upload, review and save. */
+/* Skaner ekrani: jonli kamera (avto-aniqlash), rasm yuklash, tekshirish va saqlash. */
 const Scan = {
   stream: null, timer: null, busy: false, paused: false,
 
@@ -66,7 +66,7 @@ const Scan = {
     this.busy = false;
   },
 
-  process(canvas, fromFile) {
+  process(canvas) {
     const out = $('#out'); if (!out) return;
     const st = OMR.detect(canvas, { maxDim: 1600 });
     if (!st.ok) {
@@ -75,16 +75,15 @@ const Scan = {
     }
     const info = st.qr ? Sheet.parse(st.qr.data) : null;
     let test = info ? DB.test(info.testId) : null;
-    if (info && !test) { out.innerHTML = `<div class="card"><h3 class="bad">Test topilmadi</h3><p class="small">Bu varaq ushbu qurilmada mavjud bo'lmagan testga tegishli. Zaxira nusxani import qiling.</p></div>`; this.paused = false; return; }
+    if (info && !test) { out.innerHTML = `<div class="card"><h3 class="bad">Test topilmadi</h3><p class="small">Bu varaq ushbu qurilmada mavjud bo'lmagan testga tegishli. Bulut sinxronlashni yoqing yoki zaxira nusxani import qiling.</p></div>`; this.paused = false; return; }
     if (!test) test = DB.test($('#tsel').value);
     if (!test) { out.innerHTML = `<div class="card"><h3 class="bad">QR kod o'qilmadi</h3><p class="small">Yuqoridan testni tanlang va qayta urinib ko'ring.</p></div>`; this.paused = false; return; }
-    const n = Scoring.qCount(test);
-    const rd = OMR.read(st, n);
-    this.review({ st, test, studentId: info && info.studentId && DB.student(info.studentId) ? info.studentId : '', variant: info && info.variant ? info.variant : test.variants[0].code, answers: rd.answers });
+    const rd = OMR.read(st, test);
+    this.review({ st, test, studentId: info && info.studentId && DB.student(info.studentId) ? info.studentId : '', variant: info && info.variant ? info.variant : test.variants[0].code, answers: rd.answers, flags: rd.flags });
   },
 
   review(s) {
-    const t = s.test, n = Scoring.qCount(t);
+    const t = s.test;
     const out = $('#out');
     const pool = DB.studentsOfGroups(t.groupIds);
     const all = pool.length ? pool : DB.myStudents();
@@ -92,9 +91,10 @@ const Scan = {
     const draw = () => {
       const fake = { id: '_', testId: t.id, studentId: s.studentId, variant: s.variant, answers: s.answers };
       const ev = Scoring.evaluate(t, fake);
-      const key = Scoring.variantOf(t, s.variant).key;
-      const ov = OMR.overlay(s.st, n, s.answers, key);
-      const multi = s.answers.split('').filter(x => x === '*').length;
+      const key = Core.normKey(t, Scoring.variantOf(t, s.variant).key);
+      const ov = OMR.overlay(s.st, t, s.answers, key, s.flags);
+      const multi = s.flags.map((f, i) => f === 'multi' ? i + 1 : 0).filter(Boolean);
+      const faint = s.flags.map((f, i) => f === 'faint' ? i + 1 : 0).filter(Boolean);
       out.innerHTML = `<div class="card">
           <div class="row"><b>${esc(t.name)}</b><span class="sp"></span><span class="badge ${t.type}">${TYPE_NAME[t.type]}</span></div>
           <div class="grid2" style="margin-top:10px">
@@ -103,25 +103,27 @@ const Scan = {
           </div>
           <div class="row wrap"><div><div class="score">${t.type === 'rasch' ? ev.correct + '/' + ev.total : ev.points}${t.type !== 'rasch' ? `<span class="muted" style="font-size:16px"> / ${ev.max}</span>` : ''}</div><div class="small muted">${t.type === 'rasch' ? "to'g'ri (Rasch ball saqlangandan keyin hisoblanadi)" : 'ball · ' + ev.percent + '%'}</div></div>
             <span class="sp"></span><div class="small"><div class="ok">✓ ${ev.correct}</div><div class="bad">✗ ${ev.wrong}</div><div class="muted">○ ${ev.blank}</div></div></div>
-          ${multi ? `<p class="small" style="color:var(--acc)">⚠ ${multi} ta savolda bir nechta belgi bor — tekshiring.</p>` : ''}
+          ${multi.length ? `<p class="small warnbox">⚠ Bir nechta belgi: ${multi.join(', ')}-savollar — to'g'risini tanlang yoki shunday qoldiring (noto'g'ri hisoblanadi).</p>` : ''}
+          ${faint.length ? `<p class="small warnbox">⚠ Xira belgi: ${faint.join(', ')}-savollar — rasm bilan solishtirib tasdiqlang.</p>` : ''}
           ${existing() ? `<p class="small" style="color:var(--acc)">Bu o'quvchining natijasi bor — saqlansa yangilanadi.</p>` : ''}
           <div class="btns"><button class="btn pri sp" id="save">✓ Saqlash</button><button class="btn sp" id="again">↻ Qayta</button></div>
         </div>
         <div class="card"><h3>Tanilgan varaq</h3><img class="preview" src="${ov.toDataURL('image/jpeg', .8)}" alt=""></div>
-        <div class="card"><h3>Javoblar</h3><p class="small muted" style="margin-top:0">Xato tanilgan bo'lsa, to'g'risini bosing.</p><div class="keys" id="ra"></div></div>`;
-      renderKeyGrid($('#ra'), t, s.answers, (q, o) => { const a = s.answers.split(''); a[q] = a[q] === o ? '-' : o; s.answers = a.join(''); setTimeout(draw, 0); return s.answers; }, key);
+        <div class="card"><h3>Javoblar</h3><p class="small muted" style="margin-top:0">Xato tanilgan bo'lsa, to'g'risini bosing. Sariq — tekshirish kerak.</p><div class="keys" id="ra"></div></div>`;
+      renderKeyGrid($('#ra'), t, s.answers, (q, o) => { const a = s.answers.split(''); a[q] = a[q] === o ? '-' : o; s.answers = a.join(''); s.flags[q] = null; setTimeout(draw, 0); return s.answers; }, key, s.flags);
       $('#rs').onchange = e => { s.studentId = e.target.value; draw(); };
       $('#rv').onchange = e => { s.variant = e.target.value; draw(); };
       $('#again').onclick = () => this.resume();
       $('#save').onclick = () => {
         if (!s.studentId) { toast("O'quvchini tanlang", 'err'); return; }
-        saveResult(t, s.studentId, s.variant, s.answers, 'scan');
+        const r = saveResult(t, s.studentId, s.variant, s.answers, 'scan');
         const nm = DB.student(s.studentId).name;
         toast(`${nm}: saqlandi`);
+        if (t.type !== 'rasch' && DB.data.settings.autoNotify !== false) TBot.notifyResults(t, [r], true);
         if (!$('#tsel').value) $('#tsel').value = t.id;
         this.resume();
       };
-      $("#camwrap").style.display = "none";
+      $('#camwrap').style.display = 'none';
       out.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
     draw();
@@ -131,7 +133,6 @@ const Scan = {
     $('#out').innerHTML = '';
     const cw = $('#camwrap'); if (cw) cw.style.display = '';
     const st = $('#st'); if (st && this.stream) st.textContent = 'Keyingi varaqni ko‘rsating…';
-    // wait a moment so the same sheet is not picked up twice
     setTimeout(() => { this.paused = false; }, this.stream ? 1500 : 0);
     window.scrollTo(0, 0);
   }

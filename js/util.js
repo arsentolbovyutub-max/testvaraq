@@ -1,4 +1,4 @@
-/* Small helpers shared by every module. */
+/* Barcha modullar uchun yordamchi funksiyalar. */
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
@@ -47,7 +47,7 @@ function normPhone(p) {
   return d;
 }
 
-/* Modal: returns {el, close}. html is the inner content. */
+/* Modal: {el, close} qaytaradi. */
 function modal(html, onMount) {
   const root = $('#modal-root');
   const bg = document.createElement('div');
@@ -81,7 +81,7 @@ function download(blob, name) {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
 }
 
-/* Share a file through the phone's share sheet (Telegram etc.), or download it. */
+/* Telefonning "ulashish" oynasi (Telegram va h.k.) yoki yuklab olish. */
 async function shareOrDownload(blob, name, title) {
   try {
     const file = new File([blob], name, { type: blob.type });
@@ -108,7 +108,7 @@ function loadImageFile(file) {
   });
 }
 
-/* Cyrillic -> Latin, used for PDF text (built-in PDF fonts are Latin-only). */
+/* Kirill -> lotin (fayl nomlari va shrift yuklanmagan holat uchun). */
 const CYR = { а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'yo',ж:'j',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'x',ц:'ts',ч:'ch',ш:'sh',щ:'sh',ъ:"'",ы:'i',ь:'',э:'e',ю:'yu',я:'ya',ў:"o'",қ:'q',ғ:"g'",ҳ:'h' };
 function latin(s) {
   return String(s ?? '').replace(/[Ѐ-ӿ]/g, ch => {

@@ -15,7 +15,10 @@ const ROUTES = [
   [/^#\/settings$/, () => V.settings()],
   [/^#\/backup$/, () => V.backup()],
   [/^#\/help$/, () => V.help()],
-  [/^#\/bot$/, () => V.bot()]
+  [/^#\/bot$/, () => V.bot()],
+  [/^#\/appeals$/, () => V.appeals()],
+  [/^#\/cloud$/, () => V.cloud()],
+  [/^#\/xls$/, () => V.xls()]
 ];
 
 function route() {
@@ -23,7 +26,11 @@ function route() {
   $('#modal-root').innerHTML = '';
   DB.load();
   const h = location.hash || '#/home';
-  if (!DB.data.center) { if (h !== '#/register') { location.replace('#/register'); return; } return V.register(); }
+  if (!DB.data.center) {
+    if (h === '#/login') return V.login();
+    if (h !== '#/register') { location.replace('#/register'); return; }
+    return V.register();
+  }
   if (h === '#/register') return V.register();
   if (!DB.me()) { if (h !== '#/login') { location.replace('#/login'); return; } return V.login(); }
   if (h === '#/login') { location.replace('#/home'); return; }
@@ -33,6 +40,7 @@ function route() {
 
 window.addEventListener('hashchange', route);
 route();
+if (DB.data.cloud && DB.me()) Cloud.start();
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});

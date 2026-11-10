@@ -1,7 +1,7 @@
-/* Offline cache: app shell + CDN libraries. Network first for the shell so updates arrive. */
-const CACHE = 'testvaraq-v2';
-const SHELL = ['./', 'index.html', 'css/app.css', 'icon.svg', 'manifest.webmanifest',
-  'js/util.js', 'js/db.js', 'js/scoring.js', 'js/sheet.js', 'js/omr.js', 'js/pdf.js', 'js/views.js', 'js/scan.js', 'js/bot.js', 'js/app.js'];
+/* Offline kesh: ilova qobig'i + CDN kutubxonalar. Qobiq uchun avval tarmoq — yangilanishlar darhol keladi. */
+const CACHE = 'testvaraq-v3';
+const SHELL = ['./', 'index.html', 'css/app.css', 'icon.svg', 'manifest.webmanifest', 'fonts/DejaVuSans.ttf', 'fonts/DejaVuSans-Bold.ttf',
+  'js/util.js', 'js/core.js', 'js/db.js', 'js/scoring.js', 'js/sheet.js', 'js/omr.js', 'js/pdf.js', 'js/views.js', 'js/scan.js', 'js/cloud.js', 'js/bot.js', 'js/xlscalc.js', 'js/xlsview.js', 'js/app.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -13,6 +13,7 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
+  if (url.pathname.startsWith('/api/')) return;
   const isCdn = url.hostname === 'cdnjs.cloudflare.com' || url.hostname === 'cdn.jsdelivr.net';
   if (url.origin !== location.origin && !isCdn) return;
   if (isCdn) {

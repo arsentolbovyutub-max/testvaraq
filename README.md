@@ -29,6 +29,14 @@ Qog'oz javob varaqalarini telefon kamerasi bilan tekshirish, blok (DTM), oddiy v
 - **PDF'larda kirill va o'zbek harflari to'g'ri chiqadi** (DejaVu Sans shrifti).
 - **Testlar va natijalarni Excel'ga eksport qilish mumkin.**
 
+## Rasch hisoblash (2.1)
+
+- Yangi test standart holatda **Rasch**: savol balli o'quvchilarning javoblari bo'yicha aniqlanadi — kam topilgan (qiyin) savolga ko'p ball, ko'p topilganiga kam ball; barcha savollar yig'indisi = maksimal ball (standart 75). Qiyinlik — Rasch modeli (JML), hamma topgan / hech kim topmagan savollar kalibrovkadan chiqariladi.
+- Ikkinchi usul — **Milliy sertifikat (BMBA)**: θ (WLE) → Z = (θ − μ)/σ → T = 50 + 10·Z, 0…maksimal. Darajalar: A+ ≥ 70, A ≥ 65, B+ ≥ 60, B ≥ 55, C+ ≥ 50, C ≥ 46.
+- Excel hisoblash, skaner, qo'lda kiritish va bot natijalari — hammasi shu usulda.
+- **Savol varag'idan test**: savol varag'i suratga olinadi (OCR) → savollar soni, variantlar (A–F, True/False, yozma) va "Javoblar: 1-A 2-C…" yoki * belgisi bo'lsa kalit avtomatik.
+- **Kalitni titul varaqdan**: o'qituvchi to'ldirgan javob varaqasini skanerlab kalitni kiritish.
+
 ## Deploy (GitHub orqali)
 
 1. GitHub'da repozitoriyani oching. **Eski fayllarning hammasini o'chiring** (ayniqsa eski `api/` papkasi va `package.json`), keyin shu zip ichidagi barcha fayl va papkalarni yuklang (**Add file → Upload files** → papkalarni sudrab tashlang → Commit).

@@ -123,3 +123,6 @@ table.t tr.click{cursor:pointer}
 .chk input{width:20px;height:20px}
 hr{border:0;border-top:1px solid var(--line);margin:14px 0}
 .ok{color:var(--ok)} .bad{color:var(--bad)}
+.ptsgrid{display:flex;flex-wrap:wrap;gap:4px}
+.ptsgrid span{font-size:12px;padding:3px 7px;border-radius:8px;background:var(--bg);border:1px solid var(--line);font-variant-numeric:tabular-nums}
+.ptsgrid span.okp{background:var(--ok-soft);border-color:var(--ok);color:var(--ok);font-weight:600}

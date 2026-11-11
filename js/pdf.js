@@ -94,9 +94,9 @@ const PDF = {
       const info = Core.qInfo(test);
       const items = info.map((x, i) => {
         const right = rows.filter(r => r.ev.marks[i] === 1).length;
-        return [i + 1, T(x.sec.title), right, Math.round(right / rows.length * 100) + '%', rasch ? rasch.items[i].b : ''];
+        return [i + 1, T(x.sec.title), right, Math.round(right / rows.length * 100) + '%', rasch ? rasch.items[i].b : '', rasch ? rasch.items[i].w : ''];
       });
-      this.tbl(doc, { head: [['Savol', T("Bo'lim"), T("To'g'ri javoblar"), '%', rasch ? 'Qiyinlik (b)' : '']], body: items, startY: 22, theme: 'grid', styles: { fontSize: 9, halign: 'center' } });
+      this.tbl(doc, { head: [['Savol', T("Bo'lim"), T("To'g'ri javoblar"), '%', rasch ? 'Qiyinlik (b)' : '', rasch ? 'Savol balli' : '']], body: items, startY: 22, theme: 'grid', styles: { fontSize: 9, halign: 'center' } });
     }
     return doc.output('blob');
   },
@@ -112,7 +112,7 @@ const PDF = {
     doc.setFontSize(13);
     if (test.type === 'rasch') {
       const R = Scoring.rasch(test, DB.resultsOfTest(test.id)).byResult[result.id];
-      doc.text(T(`Ball: ${R.T}  ·  Daraja: ${R.grade}  ·  To'g'ri: ${ev.correct}/${ev.total}`), 14, y);
+      doc.text(T(`Rasch ball: ${R.T} / ${Core.raschCfg(test).max}  ·  Daraja: ${R.grade}  ·  To'g'ri: ${ev.correct}/${ev.total}`), 14, y);
     } else doc.text(T(`Ball: ${ev.points} / ${ev.max}  (${ev.percent}%)  ·  To'g'ri: ${ev.correct}/${ev.total}`), 14, y);
     y += 6;
     if (test.sections.length > 1) {

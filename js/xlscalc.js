@@ -1,6 +1,7 @@
 /* Tayyor Excel jadvallarini (EvalBee hisobotlari va oddiy "ism + javoblar" jadvallari) o'qish va to'liq hisoblash.
    Brauzerda XLSX (SheetJS) global obyekti bilan ishlaydi; Node'da testlash uchun module.exports. */
 const XlsCalc = (() => {
+  const CoreRef = typeof Core !== 'undefined' ? Core : (typeof require !== 'undefined' ? require('./core.js') : null);
   const LETTERS = 'ABCDEF';
   const norm = v => (v == null ? '' : String(v)).trim();
   const low = v => norm(v).toLowerCase().replace(/[‘’ʻʼ`']/g, "'");
@@ -218,13 +219,19 @@ const XlsCalc = (() => {
       const percent = maxPoints ? r2(points / maxPoints * 100) : 0;
       return { roll: s.roll, name: s.name || s.roll || "Noma'lum", correct, wrong, blank, multi, points, percent, grade5: fiveGrade(percent), sections: secs, marks, answers: s.answers.map(a => show(a.v)), file: s.file };
     });
-    // Reyting (teng ballar bir xil o'rin: 1, 2, 2, 4)
-    const sorted = [...rows].sort((a, b) => b.points - a.points || b.correct - a.correct || a.name.localeCompare(b.name));
-    sorted.forEach((r, i) => { r.rank = i && r.points === sorted[i - 1].points ? sorted[i - 1].rank : i + 1; });
-    // Rasch
+    // Xom ball bo'yicha o'rin (fayl bilan solishtirish uchun)
+    const rawSorted = [...rows].sort((a, b) => b.points - a.points || b.correct - a.correct || a.name.localeCompare(b.name));
+    rawSorted.forEach((r, i) => { r.rawRank = i && r.points === rawSorted[i - 1].points ? rawSorted[i - 1].rawRank : i + 1; });
+    // Rasch: savol qiyinligi bo'yicha ball (yoki BMBA T-ball)
+    const scoring = opts.scoring || 'rasch';
+    const cfg = { mode: opts.raschMode === 'bmba' ? 'bmba' : 'weighted', max: opts.raschMax > 0 ? +opts.raschMax : 75 };
     const X = rows.map(r => r.marks.map(m => (m === 1 ? 1 : 0)));
-    const R = rows.length ? rasch(X) : { theta: [], b: [] };
-    rows.forEach((r, i) => { const T = r2(Math.max(0, Math.min(75, 50 + 10 * R.theta[i]))); r.rasch = { theta: r2(R.theta[i]), T, grade: raschGrade(T) }; });
+    const M = rows.length ? CoreRef.raschScoreMatrix(X, cfg) : { rows: [], b: [], w: [], few: true };
+    rows.forEach((r, i) => { const o = M.rows[i]; const T = r2(o.score); r.rasch = { theta: r2(o.theta), T, grade: CoreRef.grade(T * 75 / cfg.max), weighted: o.weighted, bmba: o.T, pts: o.pts }; });
+    const key2 = r => (scoring === 'rasch' ? r.rasch.T : r.points);
+    const sorted = [...rows].sort((a, b) => key2(b) - key2(a) || b.correct - a.correct || a.name.localeCompare(b.name));
+    sorted.forEach((r, i) => { r.rank = i && key2(r) === key2(sorted[i - 1]) ? sorted[i - 1].rank : i + 1; });
+    const R = { b: M.b, w: M.w };
     // Savollar tahlili: qiyinlik, ajratish indeksi (yuqori/quyi 27%), variantlar taqsimoti
     const g = Math.max(1, Math.round(rows.length * 0.27));
     const upper = sorted.slice(0, g), lower = sorted.slice(-g);
@@ -234,14 +241,14 @@ const XlsCalc = (() => {
       rows.forEach(r => { const a = r.answers[q] || '—'; dist[a] = (dist[a] || 0) + 1; if (r.marks[q] === 1) right++; });
       const pu = upper.filter(r => r.marks[q] === 1).length / g, pl = lower.filter(r => r.marks[q] === 1).length / g;
       const sec = sections[secOf(q)];
-      return { n: q + 1, key: show(k), section: sec?.title, kind: sec?.kind, right, p: rows.length ? r2(right / rows.length * 100) : 0, disc: r2(pu - pl), b: r2(R.b[q] ?? 0), dist };
+      return { n: q + 1, key: show(k), section: sec?.title, kind: sec?.kind, right, p: rows.length ? r2(right / rows.length * 100) : 0, disc: r2(pu - pl), b: r2(R.b[q] ?? 0), w: r2(R.w[q] ?? 0), dist };
     });
     // Fayldagi qiymatlar bilan solishtirish
     const checks = { total: 0, rank: 0, correct: 0, topics: 0, compared: 0 };
     rows.forEach(r => {
       const f = r.file || {};
       if (f.total != null) { checks.compared++; if (Math.abs(f.total - r.points) > 1e-6) checks.total++; }
-      if (f.rank != null && f.rank !== r.rank) checks.rank++;
+      if (f.rank != null && f.rank !== r.rawRank) checks.rank++;
       if (f.correct != null && f.correct !== r.correct) checks.correct++;
       if (f.topics && f.topics.length === r.sections.length && f.topics.some((t, i) => t != null && Math.abs(t - r.sections[i].points) > 1e-6)) checks.topics++;
     });
@@ -256,7 +263,7 @@ const XlsCalc = (() => {
     const kr20 = I > 1 && varT ? r2((I / (I - 1)) * (1 - pq / varT)) : null;
     const sectionStats = sections.map((s, i) => ({ title: s.title, avg: rows.length ? r2(rows.reduce((a, r) => a + r.sections[i].points, 0) / rows.length) : 0, max: r2(s.count * (s.weight ?? 1)) }));
     return {
-      exam: p.students[0]?.exam || '', sections, key: key.map(show), maxPoints, rows: sorted, items, checks,
+      exam: p.students[0]?.exam || '', sections, key: key.map(show), maxPoints, rows: sorted, items, checks, scoring, rcfg: cfg, few: M.few,
       stats: { count: rows.length, mean: r2(mean), median: r2(med), sd: r2(sd), max: Math.max(...pts, 0), min: pts.length ? Math.min(...pts) : 0, kr20, sectionStats }
     };
   }
@@ -278,13 +285,13 @@ const XlsCalc = (() => {
   /* Natijalarni Excel'ga yozish (3 varaq). */
   function toWorkbook(XLSX, R) {
     const wb = XLSX.utils.book_new();
-    const head = ['O‘rin', 'Raqam', 'Ism', 'Ball', 'Maks', '%', 'Baho (5)', 'Rasch ball', 'Rasch daraja', 'To‘g‘ri', 'Noto‘g‘ri', 'Javobsiz', ...R.sections.map(s => s.title)];
-    const data = R.rows.map(r => [r.rank, r.roll, r.name, r.points, R.maxPoints, r.percent, r.grade5, r.rasch.T, r.rasch.grade, r.correct, r.wrong, r.blank, ...r.sections.map(s => s.points)]);
+    const head = ['O‘rin', 'Raqam', 'Ism', `Rasch ball (${R.rcfg.max})`, 'Daraja', 'Qiyinlik bo‘yicha ball', 'BMBA T-ball', 'Xom ball', 'Maks', '%', 'Baho (5)', 'To‘g‘ri', 'Noto‘g‘ri', 'Javobsiz', ...R.sections.map(s => s.title)];
+    const data = R.rows.map(r => [r.rank, r.roll, r.name, r.rasch.T, r.rasch.grade, r.rasch.weighted, r.rasch.bmba, r.points, R.maxPoints, r.percent, r.grade5, r.correct, r.wrong, r.blank, ...r.sections.map(s => s.points)]);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([head, ...data]), 'Natijalar');
-    const ih = ['Savol', 'Bo‘lim', 'Kalit', 'To‘g‘ri soni', 'To‘g‘ri %', 'Ajratish', 'Rasch qiyinlik', 'Javoblar taqsimoti'];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([ih, ...R.items.map(it => [it.n, it.section, it.key, it.right, it.p, it.disc, it.b, Object.entries(it.dist).map(([k, v]) => `${k}:${v}`).join('  ')])]), 'Savollar tahlili');
+    const ih = ['Savol', 'Bo‘lim', 'Kalit', 'To‘g‘ri soni', 'To‘g‘ri %', 'Savol balli', 'Rasch qiyinlik (logit)', 'Ajratish', 'Javoblar taqsimoti'];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([ih, ...R.items.map(it => [it.n, it.section, it.key, it.right, it.p, it.w, it.b, it.disc, Object.entries(it.dist).map(([k, v]) => `${k}:${v}`).join('  ')])]), 'Savollar tahlili');
     const mh = ['Ism', ...R.items.map(it => 'Q' + it.n)];
-    const mr = R.rows.map(r => [r.name, ...r.answers.map((a, i) => (r.marks[i] === 1 ? '✓ ' : r.marks[i] === 0 ? '✗ ' : '') + (a || '—'))]);
+    const mr = R.rows.map(r => [r.name, ...r.answers.map((a, i) => (r.marks[i] === 1 ? `✓ ${a} (+${r.rasch.pts[i]})` : (r.marks[i] === 0 ? '✗ ' : '') + (a || '—')))]);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([mh, ['KALIT', ...R.key], ...mr]), 'Javoblar');
     return wb;
   }

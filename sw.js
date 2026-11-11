@@ -1,7 +1,7 @@
 /* Offline kesh: ilova qobig'i + CDN kutubxonalar. Qobiq uchun avval tarmoq — yangilanishlar darhol keladi. */
-const CACHE = 'testvaraq-v3';
+const CACHE = 'testvaraq-v4';
 const SHELL = ['./', 'index.html', 'css/app.css', 'icon.svg', 'manifest.webmanifest', 'fonts/DejaVuSans.ttf', 'fonts/DejaVuSans-Bold.ttf',
-  'js/util.js', 'js/core.js', 'js/db.js', 'js/scoring.js', 'js/sheet.js', 'js/omr.js', 'js/pdf.js', 'js/views.js', 'js/scan.js', 'js/cloud.js', 'js/bot.js', 'js/xlscalc.js', 'js/xlsview.js', 'js/app.js'];
+  'js/util.js', 'js/core.js', 'js/db.js', 'js/scoring.js', 'js/sheet.js', 'js/omr.js', 'js/pdf.js', 'js/views.js', 'js/scan.js', 'js/cloud.js', 'js/bot.js', 'js/xlscalc.js', 'js/xlsview.js', 'js/qpaper.js', 'js/app.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

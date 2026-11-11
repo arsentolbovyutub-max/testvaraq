@@ -132,54 +132,126 @@
       return '—';
     },
 
-    /* Rasch (1PL), JML. Shkala: T = 50 + 10·θ (savollar qiyinligi o'rtachasi 0), 0..75.
-       Guruh o'rtachasiga bog'lanmaydi: kuchli guruh yuqori, kuchsiz guruh past ball oladi. */
-    raschFit(X) {
+    /* ---------------- RASCH ----------------
+       Savollar 0/1 (yozma javob ham alohida savol). Qiyinlik (b) — shu testni yechgan hammaning javoblari bo'yicha (JML).
+       Hamma topgan / hech kim topmagan savollar kalibrovkadan chiqariladi (ular o'quvchilarni ajratmaydi).
+       Ikki usul:
+         'weighted' — savol qiyinligi bo'yicha ball: kam topilgan (qiyin) savolga ko'p ball, ko'p topilganiga kam ball.
+                      Barcha savol ballari yig'indisi = maksimal ball (standart 75). O'quvchi balli = topgan savollari ballari yig'indisi.
+         'bmba'     — Milliy sertifikat (BMBA) usuli: θ (WLE) → Z = (θ − μ)/σ → T = 50 + 10·Z, [0; maksimal] oralig'ida. */
+    raschCfg(test) {
+      const r = test.rasch || {};
+      return { mode: r.mode === 'bmba' ? 'bmba' : 'weighted', max: r.max > 0 ? +r.max : 75 };
+    },
+
+    /* Savollar qiyinligini baholash (JML). X: o'quvchilar x savollar (0/1). */
+    raschCalibrate(X) {
       const P = X.length, I = P ? X[0].length : 0;
       const sig = x => 1 / (1 + Math.exp(-x));
-      const cl = (s, n) => Math.min(n - 0.3, Math.max(0.3, s));
-      const pr = X.map(r => r.reduce((a, b) => a + b, 0));
-      const ir = Array.from({ length: I }, (_, i) => X.reduce((a, r) => a + r[i], 0));
-      const few = P < 3;
-      const th = pr.map(s => (I ? Math.log(cl(s, I) / (I - cl(s, I))) : 0));
-      const b = ir.map(s => (few ? 0 : Math.log((P - cl(s, P)) / cl(s, P))));
-      for (let it = 0; it < 300; it++) {
-        let md = 0;
-        if (!few) {
-          for (let i = 0; i < I; i++) {
+      const s = Array.from({ length: I }, (_, i) => X.reduce((a, r) => a + r[i], 0));
+      const act = s.map(v => v > 0 && v < P);
+      const nAct = act.filter(Boolean).length;
+      const b = new Array(I).fill(0);
+      if (P >= 2 && nAct >= 2) {
+        const raw = X.map(r => r.reduce((a, v, i) => a + (act[i] ? v : 0), 0));
+        const pAct = raw.map(r => r > 0 && r < nAct);
+        const th = raw.map(r => (r > 0 && r < nAct ? Math.log(r / (nAct - r)) : 0));
+        for (let i = 0; i < I; i++) if (act[i]) b[i] = Math.log((P - s[i]) / s[i]);
+        for (let it = 0; it < 500; it++) {
+          let md = 0;
+          for (let p = 0; p < P; p++) {
+            if (!pAct[p]) continue;
             let e = 0, v = 0;
-            for (let p = 0; p < P; p++) { const q = sig(th[p] - b[i]); e += q; v += q * (1 - q); }
-            const d = Math.max(-1, Math.min(1, (e - cl(ir[i], P)) / (v || 1e-6)));
-            b[i] += d; md = Math.max(md, Math.abs(d));
+            for (let i = 0; i < I; i++) if (act[i]) { const q = sig(th[p] - b[i]); e += q; v += q * (1 - q); }
+            const d = Math.max(-1, Math.min(1, (raw[p] - e) / (v || 1e-9)));
+            th[p] = Math.max(-6, Math.min(6, th[p] + d)); md = Math.max(md, Math.abs(d));
           }
-          const mean = b.reduce((a, x) => a + x, 0) / (I || 1);
-          for (let i = 0; i < I; i++) b[i] -= mean;
+          let mean = 0;
+          for (let i = 0; i < I; i++) {
+            if (!act[i]) continue;
+            let e = 0, v = 0, si = 0;
+            for (let p = 0; p < P; p++) if (pAct[p]) { const q = sig(th[p] - b[i]); e += q; v += q * (1 - q); si += X[p][i]; }
+            const d = Math.max(-1, Math.min(1, (e - si - b[i] / 9) / ((v || 1e-9) + 1 / 9)));   // kuchsiz N(0, 3²) prior: mukammal Guttman holatida ham chekli
+            b[i] += d; md = Math.max(md, Math.abs(d)); mean += b[i];
+          }
+          mean /= nAct;
+          for (let i = 0; i < I; i++) if (act[i]) b[i] -= mean;
+          if (md < 1e-6) break;
         }
-        for (let p = 0; p < P; p++) {
-          let e = 0, v = 0;
-          for (let i = 0; i < I; i++) { const q = sig(th[p] - b[i]); e += q; v += q * (1 - q); }
-          const d = Math.max(-1, Math.min(1, (cl(pr[p], I) - e) / (v || 1e-6)));
-          th[p] += d; md = Math.max(md, Math.abs(d));
-        }
-        if (md < 1e-5) break;
+        const c = (nAct - 1) / nAct;
+        for (let i = 0; i < I; i++) if (act[i]) b[i] *= c;
       }
-      const c = !few && I > 1 ? (I - 1) / I : 1;
-      return { theta: th, b: b.map(x => x * c), raw: pr, items: ir, few };
+      const ba = b.filter((_, i) => act[i]);
+      const lo = ba.length ? Math.min(...ba) : 0, hi = ba.length ? Math.max(...ba) : 0;
+      for (let i = 0; i < I; i++) if (!act[i] && P) b[i] = s[i] >= P ? lo - 1 : hi + 1;   // hamma topgan: eng oson; hech kim: eng qiyin
+      return { b, act, s, few: P < 3 || nAct < 2 };
+    },
+
+    /* Qobiliyat θ — WLE (Warm): 0 va maksimal natijalar uchun ham chekli qiymat. */
+    raschWLE(x, b, act) {
+      const sig = z => 1 / (1 + Math.exp(-z));
+      let r = 0, L = 0;
+      for (let i = 0; i < b.length; i++) if (act[i]) { L++; r += x[i]; }
+      if (!L) return 0;
+      let th = Math.log((r + 0.5) / (L - r + 0.5));
+      for (let it = 0; it < 100; it++) {
+        let e = 0, inf = 0, J = 0;
+        for (let i = 0; i < b.length; i++) if (act[i]) { const p = sig(th - b[i]); e += p; inf += p * (1 - p); J += p * (1 - p) * (1 - 2 * p); }
+        const f = r - e + J / (2 * (inf || 1e-9));
+        const d = Math.max(-1, Math.min(1, f / (inf || 1e-9)));
+        th += d;
+        if (Math.abs(d) < 1e-7) break;
+      }
+      return th;
+    },
+
+    /* Savol ballari (qiyinlik bo'yicha): w = b − b_min + 1, yig'indisi = max. */
+    raschWeights(b, max) {
+      if (!b.length) return [];
+      const mn = Math.min(...b);
+      const w = b.map(x => x - mn + 1);
+      const sum = w.reduce((a, x) => a + x, 0) || 1;
+      const out = w.map(x => round2(max * x / sum));
+      const diff = round2(max - out.reduce((a, x) => a + x, 0));   // yaxlitlash qoldig'i: yig'indi aynan max bo'lsin
+      if (diff) { const i = out.indexOf(Math.max(...out)); out[i] = round2(out[i] + diff); }
+      return out;
+    },
+
+    raschScoreMatrix(X, cfg) {
+      const P = X.length;
+      const C = this.raschCalibrate(X);
+      const w = this.raschWeights(C.b, cfg.max);
+      const out = X.map(x => {
+        const pts = x.map((v, i) => (v ? w[i] : 0));
+        const weighted = round2(Math.min(cfg.max, pts.reduce((a, y) => a + y, 0)));
+        return { pts, weighted, theta: this.raschWLE(x, C.b, C.act), raw: x.reduce((a, y) => a + y, 0) };
+      });
+      const th = out.map(o => o.theta);
+      const mu = P ? th.reduce((a, y) => a + y, 0) / P : 0;
+      const sd = P > 1 ? Math.sqrt(th.reduce((a, y) => a + (y - mu) ** 2, 0) / (P - 1)) : 0;
+      out.forEach(o => {
+        o.Z = sd > 1e-9 ? (o.theta - mu) / sd : 0;
+        o.T = round2(Math.max(0, Math.min(cfg.max, 50 + 10 * o.Z)));
+        o.score = cfg.mode === 'bmba' ? o.T : o.weighted;
+      });
+      return { rows: out, b: C.b, w, s: C.s, few: C.few, mu, sd };
     },
 
     rasch(test, results) {
+      const cfg = this.raschCfg(test);
       const n = this.qCount(test);
       const X = results.map(r => this.marks(test, r).map(v => (v === 1 ? 1 : 0)));
-      const F = this.raschFit(X);
+      const M = this.raschScoreMatrix(X, cfg);
       const P = X.length;
       const items = [];
-      for (let i = 0; i < n; i++) items.push({ q: i + 1, s: F.items[i] || 0, p: P ? (F.items[i] || 0) / P : 0, b: round2(F.b[i] || 0) });
+      for (let i = 0; i < n; i++) items.push({ q: i + 1, s: M.s[i] || 0, p: P ? (M.s[i] || 0) / P : 0, b: round2(M.b[i] || 0), w: M.w[i] || 0 });
       const byResult = {};
       results.forEach((r, k) => {
-        const T = round1(Math.max(0, Math.min(75, 50 + 10 * F.theta[k])));
-        byResult[r.id] = { theta: round2(F.theta[k]), T, grade: this.grade(T), raw: F.raw[k] };
+        const o = M.rows[k];
+        const T = round1(o.score);
+        byResult[r.id] = { theta: round2(o.theta), T, grade: this.grade(T * 75 / cfg.max), raw: o.raw, pts: o.pts, weighted: o.weighted, bmba: o.T };
       });
-      return { byResult, items, few: F.few };
+      return { byResult, items, few: M.few, cfg };
     },
 
     /* Reyting (teng ballarga bir xil o'rin). studentOf(r) -> student. */

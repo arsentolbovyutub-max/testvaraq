@@ -1,5 +1,5 @@
 /* Ekranlar. Har bir ko'rinish #app ichiga chiziladi va o'z hodisalarini bog'laydi. */
-const TYPE_NAME = { block: 'Blok test', simple: 'Oddiy test', rasch: 'Rasch test' };
+const TYPE_NAME = { block: 'Blok test (DTM)', simple: 'Oddiy test', rasch: 'Rasch test' };
 
 function layout(title, body, o = {}) {
   const tabs = [['home', '⌂', 'Asosiy'], ['tests', '✎', 'Testlar'], ['scan', '⌖', 'Skaner'], ['students', '☺', "O'quvchilar"], ['more', '☰', 'Yana']];
@@ -132,12 +132,14 @@ const V = {
   testForm(id) {
     const t = id ? DB.test(id) : null;
     if (id && !t) { location.hash = '#/tests'; return; }
+    if (!id && !V._ocrKeep) V._ocr = null;
     const cloneSecs = secs => secs.map(s => ({ title: s.title, subject: s.subject, count: s.count, weight: s.weight ?? 1, kind: Core.kind(s), options: s.options || 4 }));
     const st = {
-      type: t ? t.type : 'block', name: t ? t.name : '', date: t ? t.date : today(),
+      type: t ? t.type : 'rasch', name: t ? t.name : '', date: t ? t.date : today(),
       main1: t && t.type === 'block' ? t.sections[3].subject : 'Matematika', main2: t && t.type === 'block' ? t.sections[4].subject : 'Fizika',
       secs: t && t.type !== 'block' ? cloneSecs(t.sections) : [{ title: 'Matematika', subject: 'Matematika', count: 30, weight: 1, kind: 'choice', options: 4 }],
-      variants: t ? t.variants.length : 1, groupIds: t ? (t.groupIds || []).slice() : []
+      variants: t ? t.variants.length : 1, groupIds: t ? (t.groupIds || []).slice() : [],
+      rmode: t && t.rasch && t.rasch.mode === 'bmba' ? 'bmba' : 'weighted', rmax: t && t.rasch && t.rasch.max ? t.rasch.max : 75
     };
     const subjOpts = sel => SUBJECTS.map(s => `<option ${s === sel ? 'selected' : ''}>${esc(s)}</option>`).join('');
     const secRow = (s, i) => `<div class="secrow" data-i="${i}">
@@ -152,19 +154,23 @@ const V = {
           <label class="f"><span>Savollar</span><input class="in" data-k="count" type="number" min="1" max="120" value="${s.count}"></label>
           <label class="f"><span>Turi</span><select class="in" data-k="kind">${Object.entries(Core.KIND_NAME).map(([k, l]) => `<option value="${k}" ${s.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
           <label class="f"><span>Variantlar</span><select class="in" data-k="options" ${s.kind !== 'choice' ? 'disabled' : ''}>${[2, 3, 4, 5, 6].map(k => `<option value="${k}" ${s.kind === 'choice' && +s.options === k ? 'selected' : ''}>${s.kind === 'tf' ? 'T/F' : s.kind === 'open' ? '—' : 'A–' + Core.LETTERS[k - 1]}</option>`).join('')}</select></label>
-          <label class="f"><span>Ball (har savol)</span><input class="in" data-k="weight" type="number" min="0" step="0.1" value="${s.weight}"></label>
+          ${st.type === 'rasch' ? `<label class="f"><span>Ball</span><input class="in" value="Rasch" disabled></label>` : `<label class="f"><span>Ball (har savol)</span><input class="in" data-k="weight" type="number" min="0" step="0.1" value="${s.weight}"></label>`}
         </div>
       </div>`;
     const draw = () => {
       const groups = DB.myGroups();
       const total = st.secs.reduce((a, s) => a + (+s.count || 0), 0);
-      const body = `<form id="f">
+      const body = `${t ? '' : `<div class="card"><h3>📄 Savol varag'idan avtomatik</h3>
+          <p class="small muted" style="margin-top:0">Savol varag'ini (bir yoki bir nechta sahifa) suratga oling: savollar soni, har savol variantlari (A–F, True/False, yozma) aniqlanadi. Varaqda "Javoblar: 1-A 2-C …" ro'yxati yoki to'g'ri variant yonida * belgisi bo'lsa — kalit ham avtomatik kiritiladi.</p>
+          <label class="btn block">📷 Savol varag'ini tanlash / suratga olish<input type="file" id="qp" accept="image/*" multiple hidden></label>
+          <div id="qpout" class="small" style="margin-top:8px"></div></div>`}
+        <form id="f">
         <div class="card"><h3>Test turi</h3>
-          <div class="tabs">${['block', 'simple', 'rasch'].map(k => `<button type="button" data-t="${k}" class="${st.type === k ? 'on' : ''}" ${t ? 'disabled' : ''}>${TYPE_NAME[k]}</button>`).join('')}</div>
+          <div class="tabs">${['rasch', 'simple', 'block'].map(k => `<button type="button" data-t="${k}" class="${st.type === k ? 'on' : ''}" ${t ? 'disabled' : ''}>${TYPE_NAME[k]}</button>`).join('')}</div>
           <p class="small muted" style="margin:0">${{
             block: "DTM formati: 3 ta majburiy fan (10 tadan, 1.1 ball) + 2 ta asosiy fan (30 tadan, 3.1 va 2.1 ball). 90 savol, 189 ball. Milliy sertifikat avtomatik hisobga olinadi.",
             simple: "Bir yoki bir nechta bo'lim (mavzu): har biriga alohida savol soni, variantlar soni (A–B … A–F), True/False yoki yozma javob va ball.",
-            rasch: "Rasch modeli bo'yicha milliy sertifikatdagidek ball va daraja (A+ … C). Bo'limlar oddiy testdagidek sozlanadi."
+            rasch: "Rasch modeli: savol ballini o'quvchilarning javoblari belgilaydi — kam topilgan (qiyin) savolga ko'p ball, ko'p topilgan (oson) savolga kam ball. Natija 75 ballik (yoki o'zingiz belgilagan) shkalada, A+ … C darajalar bilan."
           }[st.type]}</p>
         </div>
         <div class="card">
@@ -175,6 +181,10 @@ const V = {
               <label class="f"><span>1-asosiy fan (3.1 ball)</span><select class="in" name="main1">${subjOpts(st.main1)}</select></label>
               <label class="f"><span>2-asosiy fan (2.1 ball)</span><select class="in" name="main2">${subjOpts(st.main2)}</select></label>
             </div>` : ''}
+          ${st.type === 'rasch' ? `<div class="grid2">
+            <label class="f"><span>Rasch hisoblash usuli</span><select class="in" name="rmode"><option value="weighted" ${st.rmode === 'weighted' ? 'selected' : ''}>Savol qiyinligi bo'yicha ball</option><option value="bmba" ${st.rmode === 'bmba' ? 'selected' : ''}>Milliy sertifikat (BMBA T-ball)</option></select></label>
+            <label class="f"><span>Maksimal ball</span><input class="in" name="rmax" type="number" min="10" max="1000" value="${st.rmax}"></label></div>
+            <p class="small muted" style="margin-top:-6px">${st.rmode === 'bmba' ? "BMBA: θ → Z = (θ − o'rtacha)/standart og'ish → T = 50 + 10·Z (0…maksimal). O'rtacha natija 50 ball." : "Har savol balli Rasch qiyinligiga mutanosib; barcha savollar yig'indisi = maksimal ball. Hammasini topgan o'quvchi maksimal ball oladi."}</p>` : ''}
           <label class="f"><span>Variantlar soni (A, B, C…)</span><select class="in" name="variants">${[1, 2, 3, 4, 5, 6, 7, 8].map(k => `<option ${k === st.variants ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
         </div>
         ${st.type !== 'block' ? `<div class="card"><div class="row"><h3 style="margin:0">Bo'limlar (mavzular)</h3><span class="sp"></span><span class="muted small">${total} savol</span></div>
@@ -188,6 +198,35 @@ const V = {
         <button class="btn pri block">${t ? 'Saqlash' : 'Yaratish va kalitni kiritish'}</button>
       </form>`;
       layout(t ? 'Testni tahrirlash' : 'Yangi test', body, { back: t ? `#/test/${t.id}` : '#/tests', tab: 'tests' });
+      if ($('#qp')) {
+        const applyParsed = (P, text) => {
+          if (st.type === 'block') st.type = 'rasch';
+          const subj = st.secs[0] ? st.secs[0].subject : 'Matematika';
+          st.secs = P.sections.map(x => ({ title: x.title, subject: subj, count: x.count, weight: 1, kind: x.kind, options: x.options }));
+          V._ocr = { key: P.key, text, info: `${P.questions.length} ta savol · ${P.sections.length} bo'lim · kalit: ${P.keyFound} ta` };
+          draw();
+          toast(`Savol varag'i o'qildi: ${P.questions.length} ta savol`);
+        };
+        const showOcr = () => {
+          if (!V._ocr) return;
+          $('#qpout').innerHTML = `<div class="ok">✓ ${esc(V._ocr.info)}</div><p class="muted" style="margin:6px 0">Noto'g'ri o'qilgan joyni matnda tuzatib, "Qayta tahlil" ni bosing.</p>
+            <textarea class="in" id="qptext" rows="8">${esc(V._ocr.text)}</textarea><div class="btns"><button type="button" class="btn sm" id="qpre">Qayta tahlil</button><button type="button" class="btn sm danger" id="qpclr">Bekor qilish</button></div>`;
+          $('#qpre').onclick = () => applyParsed(QPaper.parse($('#qptext').value), $('#qptext').value);
+          $('#qpclr').onclick = () => { V._ocr = null; draw(); };
+        };
+        showOcr();
+        $('#qp').onchange = async e => {
+          const files = [...e.target.files]; if (!files.length) return;
+          const out = $('#qpout');
+          out.textContent = 'OCR yuklanmoqda… (birinchi marta ~10 MB, keyin tez)';
+          try {
+            const text = await QPaper.recognize(files, (p, i, n) => { if (i) out.textContent = `${i}/${n}-sahifa o'qilmoqda…`; else out.textContent = `O'qilmoqda… ${Math.round(p * 100)}%`; });
+            const P = QPaper.parse(text);
+            if (!P.questions.length) { out.innerHTML = `<span class="bad">Savollar topilmadi. Rasm aniq va to'g'ri burchakda bo'lsin (savollar "1." yoki "1)" bilan boshlansin).</span>`; return; }
+            applyParsed(P, text);
+          } catch (err) { out.innerHTML = `<span class="bad">${esc(err.message)}</span>`; }
+        };
+      }
       const form = $('#f');
       const fitCheck = () => {
         const el = $('#fit'); if (!el) return;
@@ -200,6 +239,7 @@ const V = {
         st.name = fd.get('name'); st.date = fd.get('date');
         if (fd.get('main1')) { st.main1 = fd.get('main1'); st.main2 = fd.get('main2'); }
         st.variants = parseInt(fd.get('variants')) || 1;
+        if (fd.get('rmode')) { st.rmode = fd.get('rmode'); st.rmax = Math.max(10, Math.min(1000, parseFloat(fd.get('rmax')) || 75)); }
         st.groupIds = fd.getAll('g');
         $$('.secrow').forEach(row => {
           const s = st.secs[+row.dataset.i];
@@ -238,8 +278,10 @@ const V = {
           const o = old.find(v => v.code === code);
           return { code, key: Core.normKey(tmp, ((o ? o.key : '') + '-'.repeat(n)).slice(0, n)) };
         });
+        if (!t && V._ocr && variants[0]) { variants[0].key = Core.normKey(tmp, (V._ocr.key + '-'.repeat(n)).slice(0, n)); V._ocr = null; }
         const obj = t || { id: DB.id(), createdAt: new Date().toISOString(), createdBy: DB.me().id };
         Object.assign(obj, { type: st.type, name: st.name.trim(), date: st.date, sections, variants, groupIds: st.groupIds });
+        if (st.type === 'rasch') obj.rasch = { mode: st.rmode, max: st.rmax }; else delete obj.rasch;
         if (!t) DB.data.tests.push(obj);
         DB.save();
         toast('Saqlandi');
@@ -289,6 +331,8 @@ const V = {
         <label class="f" style="margin-top:10px"><span>Tez kiritish (masalan: ABCDA BCD…${hasTF ? ', True/False uchun T yoki F' : ''}; bo'shliqlar e'tiborga olinmaydi${info.some(x => x.kind === 'open') ? '; yozma savollar o\'tkazib yuboriladi' : ''})</span>
           <div class="row"><input class="in" id="quick" placeholder="ABCD…" autocapitalize="characters"><button class="btn" id="qapply">Qo'llash</button></div></label>
         <div class="keys" id="keys"></div>
+        <div class="btns"><label class="btn">📷 Kalitni titul varaqdan<input type="file" id="kscan" accept="image/*" hidden></label><label class="btn">📄 Savol varag'idan (OCR)<input type="file" id="kocr" accept="image/*" multiple hidden></label></div>
+        <div id="kst" class="small muted"></div>
         <div class="btns"><button class="btn pri" id="kpdf">Kalit PDF</button>${t.variants.length > 1 ? `<button class="btn" id="kcopy">Boshqa variantlarga nusxalash</button>` : ''}<button class="btn danger" id="kclr">Tozalash</button></div>
       </div>`;
       renderKeyGrid($('#keys', c), t, v.key, (q, opt) => {
@@ -307,6 +351,38 @@ const V = {
         if (await confirmBox(`Variant ${v.code} kaliti boshqa barcha variantlarga yoziladi.`, 'Nusxalash')) { t.variants.forEach(x => x.key = v.key); DB.save(); toast('Nusxalandi'); }
       };
       $('#kpdf', c).onclick = async () => shareOrDownload(await PDF.key(t), `kalit_${PDF.fname(t.name)}.pdf`);
+      $('#kscan', c).onchange = async e => {
+        const f = e.target.files[0]; if (!f) return;
+        $('#kst', c).textContent = 'Varaq o‘qilmoqda…';
+        try {
+          const sres = OMR.detect(await loadImageFile(f), { maxDim: 1600 });
+          if (!sres.ok) { $('#kst', c).innerHTML = `<span class="bad">${esc(sres.error)}</span>`; return; }
+          const info = sres.qr ? Sheet.parse(sres.qr.data) : null;
+          if (info && info.testId !== t.id) { $('#kst', c).innerHTML = '<span class="bad">Bu varaq boshqa testga tegishli.</span>'; return; }
+          const rd = OMR.read(sres, t);
+          const tv = info && info.variant ? t.variants.find(x => x.code === info.variant) || v : v;
+          const k = rd.answers.split('').map(ch => (ch === '*' ? '-' : ch)).join('');
+          tv.key = Core.normKey(t, k); DB.save();
+          const bad = rd.flags.map((x, i) => (x ? i + 1 : 0)).filter(Boolean);
+          toast(`Variant ${tv.code} kaliti varaqdan o'qildi`);
+          draw();
+          if (bad.length) $('#kst', c).innerHTML = `<span class="warnbox">⚠ Tekshiring: ${bad.join(', ')}-savollar (xira yoki ikki belgi)</span>`;
+        } catch (err) { $('#kst', c).innerHTML = `<span class="bad">${esc(err.message)}</span>`; }
+      };
+      $('#kocr', c).onchange = async e => {
+        const files = [...e.target.files]; if (!files.length) return;
+        try {
+          const text = await QPaper.recognize(files, (p, i, n) => { $('#kst', c).textContent = i ? `${i}/${n}-sahifa o'qilmoqda…` : `O'qilmoqda… ${Math.round(p * 100)}%`; });
+          const P = QPaper.parse(text);
+          if (!P.keyFound) { $('#kst', c).innerHTML = `<span class="bad">Varaqda kalit topilmadi ("Javoblar: 1-A 2-B …" ro'yxati yoki * belgisi kerak). Topilgan savollar: ${P.questions.length}.</span>`; return; }
+          const info = Core.qInfo(t);
+          const arr = v.key.split('');
+          let k = 0;
+          P.questions.forEach((q, i) => { if (i < info.length && q.key && info[i].kind !== 'open') { arr[i] = info[i].kind === 'tf' ? (q.key === 'A' || q.key === 'T' ? 'A' : 'B') : q.key; k++; } });
+          v.key = Core.normKey(t, arr.join('')); DB.save(); toast(`${k} ta javob kalitga kiritildi`); draw();
+          if (P.questions.length !== info.length) $('#kst', c).innerHTML = `<span class="warnbox">⚠ Varaqda ${P.questions.length} ta savol topildi, testda ${info.length} ta. Kalitni tekshiring.</span>`;
+        } catch (err) { $('#kst', c).innerHTML = `<span class="bad">${esc(err.message)}</span>`; }
+      };
     };
     draw();
   },
@@ -417,8 +493,8 @@ const V = {
         return `<div style="margin-bottom:8px"><div class="row small"><span>${esc(s.title)}</span><span class="sp"></span><b>${round1(a)} / ${mx}</b></div><div class="bar"><i style="width:${a / mx * 100}%"></i></div></div>`;
       }).join('')}</div>` : ''}
       <div class="card"><h3>Eng qiyin savollar</h3>${hard.map(([p, i]) => `<span class="pill" style="margin:2px">${i + 1}-savol · ${Math.round(p * 100)}%</span>`).join('')}</div>
-      <div class="card tw"><h3>Har bir savol tahlili</h3><p class="small muted" style="margin-top:0">Ajratish: yaxshi o'quvchilar kuchsizlardan qanchalik ko'p topgani (0.3 dan yuqori — yaxshi savol, manfiy — savolni tekshiring).</p><table class="t"><thead><tr><th>Savol</th><th>Kalit</th><th>To'g'ri</th><th style="width:30%"></th><th class="num">Ajratish</th>${rasch ? '<th class="num">Qiyinlik</th>' : ''}<th>Javoblar</th></tr></thead><tbody>
-        ${right.map((r, i) => `<tr><td>${i + 1}</td><td>${Core.show(info[i].sec, key[i])}</td><td>${r}/${rows.length}</td><td><div class="bar"><i style="width:${r / rows.length * 100}%;background:${r / rows.length < .35 ? 'var(--bad)' : r / rows.length < .65 ? 'var(--acc)' : 'var(--ok)'}"></i></div></td><td class="num ${disc[i] < 0 ? 'bad' : ''}">${disc[i]}</td>${rasch ? `<td class="num">${rasch.items[i].b}</td>` : ''}<td class="small muted">${Object.entries(dist[i]).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${esc(k)}:${v}`).join(' ')}</td></tr>`).join('')}
+      <div class="card tw"><h3>Har bir savol tahlili</h3><p class="small muted" style="margin-top:0">Ajratish: yaxshi o'quvchilar kuchsizlardan qanchalik ko'p topgani (0.3 dan yuqori — yaxshi savol, manfiy — savolni tekshiring).</p><table class="t"><thead><tr><th>Savol</th><th>Kalit</th><th>To'g'ri</th><th style="width:30%"></th><th class="num">Ajratish</th>${rasch ? '<th class="num">Qiyinlik</th><th class="num">Savol balli</th>' : ''}<th>Javoblar</th></tr></thead><tbody>
+        ${right.map((r, i) => `<tr><td>${i + 1}</td><td>${Core.show(info[i].sec, key[i])}</td><td>${r}/${rows.length}</td><td><div class="bar"><i style="width:${r / rows.length * 100}%;background:${r / rows.length < .35 ? 'var(--bad)' : r / rows.length < .65 ? 'var(--acc)' : 'var(--ok)'}"></i></div></td><td class="num ${disc[i] < 0 ? 'bad' : ''}">${disc[i]}</td>${rasch ? `<td class="num">${rasch.items[i].b}</td><td class="num"><b>${rasch.items[i].w}</b></td>` : ''}<td class="small muted">${Object.entries(dist[i]).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${esc(k)}:${v}`).join(' ')}</td></tr>`).join('')}
       </tbody></table></div>`;
   },
 
@@ -432,7 +508,8 @@ const V = {
     const info = Core.qInfo(t);
     const draw = () => {
       const ev = Scoring.evaluate(t, r);
-      const R = t.type === 'rasch' ? Scoring.rasch(t, DB.resultsOfTest(t.id)).byResult[r.id] : null;
+      const RA = t.type === 'rasch' ? Scoring.rasch(t, DB.resultsOfTest(t.id)) : null;
+      const R = RA ? RA.byResult[r.id] : null;
       const key = Core.normKey(t, Scoring.variantOf(t, r.variant).key);
       const openQ = info.map((x, i) => (x.kind === 'open' ? i : -1)).filter(i => i >= 0);
       const body = `<div class="card">
@@ -440,7 +517,7 @@ const V = {
           ${!st ? `<label class="f" style="margin-top:10px"><span>O'quvchiga bog'lash</span><select class="in" id="link"><option value="">— tanlang —</option>${DB.myStudents().map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></label>` : ''}
           <hr>
           <div class="row wrap">
-            ${R ? `<div><div class="score">${R.T}</div><div class="small muted">Rasch ball</div></div><span class="grade">${R.grade}</span>`
+            ${R ? `<div><div class="score">${R.T}<span class="muted" style="font-size:16px"> / ${Core.raschCfg(t).max}</span></div><div class="small muted">Rasch ball${Core.raschCfg(t).mode === 'bmba' ? ' (BMBA T)' : ' (savol qiyinligi bo‘yicha)'}</div></div><span class="grade">${R.grade}</span>`
                 : `<div><div class="score">${ev.points}<span class="muted" style="font-size:16px"> / ${ev.max}</span></div><div class="small muted">Ball · ${ev.percent}%</div></div>`}
             <span class="sp"></span>
             <div class="small"><div class="ok">✓ To'g'ri: <b>${ev.correct}</b></div><div class="bad">✗ Noto'g'ri: <b>${ev.wrong}</b></div><div class="muted">○ Bo'sh: <b>${ev.blank}</b></div></div>
@@ -449,6 +526,7 @@ const V = {
           <div class="btns"><button class="btn sm" id="pdf">PDF hisobot</button><button class="btn sm" id="tg">Telegramga</button>${st && st.tg ? `<button class="btn sm" id="tgbot">Botga yuborish</button>` : ''}<button class="btn sm danger" id="del">O'chirish</button></div>
         </div>
         ${t.sections.length > 1 ? `<div class="card"><h3>Bo'limlar</h3><table class="t"><tbody>${ev.sections.map(s => `<tr><td>${esc(s.title)}${s.cert ? ` <span class="badge">Sertifikat ${esc(s.cert)}</span>` : ''}</td><td class="num">${s.correct}/${s.count}</td><td class="num"><b>${s.points}</b> / ${s.max}</td></tr>`).join('')}</tbody></table></div>` : ''}
+        ${R && Core.raschCfg(t).mode === 'weighted' ? `<div class="card"><h3>Savollar bo'yicha ball</h3><p class="small muted" style="margin-top:0">Qiyin savol — ko'p ball. Yashil: topilgan.</p><div class="ptsgrid">${R.pts.map((p, i) => `<span class="${p ? 'okp' : ''}">${i + 1}: ${RA.items[i].w}</span>`).join('')}</div></div>` : ''}
         ${openQ.length ? `<div class="card"><h3>Yozma javoblar</h3>${openQ.map(q => `<div class="row" style="border-bottom:1px solid var(--line);padding:6px 0"><b style="width:36px">${q + 1}.</b><div class="sp small">${esc((r.openText || {})[q] || (r.source === 'bot' ? '—' : "qog'ozda"))}</div>
             <button class="kb ${r.answers[q] === '+' ? 'ok' : ''}" data-og="${q}" data-v="+">✓</button><button class="kb ${r.answers[q] === 'x' ? 'no' : ''}" data-og="${q}" data-v="x">✗</button></div>`).join('')}</div>` : ''}
         ${r.image ? `<div class="card"><h3>Skanerlangan varaq</h3><img class="preview" src="${r.image}" alt=""></div>` : ''}
@@ -680,7 +758,7 @@ function resultText(t, r) {
   const key = Core.normKey(t, Scoring.variantOf(t, r.variant).key);
   const info = Core.qInfo(t);
   const wrong = ev.marks.map((m, i) => (m === 0 && info[i].kind !== 'open' ? `${i + 1}(${Core.show(info[i].sec, r.answers[i])}→${Core.show(info[i].sec, key[i])})` : '')).filter(Boolean);
-  return `📝 ${t.name} (${fmtDate(t.date)})\n👤 ${st ? st.name : (r.guestName || '')}\n` + (R ? `Ball: ${R.T} · Daraja: ${R.grade}` : `Ball: ${ev.points} / ${ev.max} (${ev.percent}%)`) +
+  return `📝 ${t.name} (${fmtDate(t.date)})\n👤 ${st ? st.name : (r.guestName || '')}\n` + (R ? `Rasch ball: ${R.T} / ${Core.raschCfg(t).max} · Daraja: ${R.grade}` : `Ball: ${ev.points} / ${ev.max} (${ev.percent}%)`) +
     `\nTo'g'ri: ${ev.correct}/${ev.total}` + (t.sections.length > 1 ? '\n' + ev.sections.map(s => `• ${s.title}: ${s.correct}/${s.count}${s.cert ? ' (sertifikat ' + s.cert + ')' : ''} — ${s.points}`).join('\n') : '') +
     (wrong.length ? `\n❌ Xatolar: ${wrong.slice(0, 40).join(', ')}${wrong.length > 40 ? '…' : ''}` : '');
 }

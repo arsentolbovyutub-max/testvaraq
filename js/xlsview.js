@@ -80,9 +80,9 @@ V.xls = function () {
 
   function importAsTest() {
     const P = st.parsed, R = st.R;
-    const conv = (v, multi) => (multi ? '*' : !v ? '-' : v === 'T' ? 'A' : v === 'F_' ? 'B' : v);
+    const conv = (v, multi) => (multi ? (String(v).split(',').every(L => 'ABCDEF'.includes(L)) ? Core.encSet(String(v).split(',')) : '*') : !v ? '-' : v === 'T' ? 'A' : v === 'F_' ? 'B' : v);
     const sections = st.sections.map(s => ({ title: s.title, subject: 'Boshqa', count: s.count, weight: s.weight, kind: s.kind === 'tf' ? 'tf' : 'choice', options: s.kind === 'tf' ? 2 : s.options }));
-    const key = R.key.map(k => (k === 'True' ? 'A' : k === 'False' ? 'B' : k || '-')).join('');
+    const key = R.key.map(k => (k === 'True' ? 'A' : k === 'False' ? 'B' : k && k.includes(',') ? Core.encSet(k.split(',')) : k || '-')).join('');
     const name = (R.exam || st.file.replace(/\.\w+$/, '')).trim();
     const g = { id: DB.id(), name: 'Import: ' + name, teacherId: DB.me().id, createdAt: new Date().toISOString() };
     const t = { id: DB.id(), type: 'rasch', rasch: { mode: st.raschMode || 'rasch', max: st.raschMax || 75 }, name, date: today(), sections, variants: [{ code: 'A', key }], groupIds: [g.id], createdAt: new Date().toISOString(), createdBy: DB.me().id, source: 'excel' };

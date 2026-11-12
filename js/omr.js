@@ -232,7 +232,12 @@ const OMR = {
       const second = sorted[1] ? sorted[1][0] : 0;
       let a = '-', f = null;
       if (sorted[0][0] < T) { if (sorted[0][0] >= WEAK && sorted[0][0] - second > 0.12) f = 'faint'; }
-      else if (second >= T && second >= sorted[0][0] * 0.7) { a = '*'; f = 'multi'; }
+      else if (second >= T && second >= sorted[0][0] * 0.7) {
+        // Bir nechta belgi: kuchli belgilangan barcha variantlar to'plami (kalit ko'p javobli bo'lsa — to'g'ri hisoblanadi).
+        const thr = Math.max(T, sorted[0][0] * 0.6);
+        const set = sorted.filter(([v]) => v >= thr).map(([, i]) => codes[i]);
+        a = L.info[q].kind === 'choice' ? Core.encSet(set) : '*'; f = 'multi';
+      }
       else { a = codes[sorted[0][1]]; if (sorted[0][0] < 0.45) f = 'faint'; }
       answers.push(a); flags.push(f);
     }
@@ -257,7 +262,9 @@ const OMR = {
         const [x, y] = this.apply(state.H, ...L.bubble(q, o));
         let col = null;
         if (a === '*') col = '#f59e0b';
-        if (a === code) col = (!k || k === '-') ? '#2563eb' : (a === k ? '#16a34a' : '#dc2626');
+        const inA = a === code || Core.decSet(a).includes(code), inK = k === code || Core.decSet(k).includes(code);
+        if (Core.isMulti(a) || Core.isMulti(k)) { if (inA) col = inK ? '#16a34a' : '#dc2626'; else if (inK) col = '#16a34a88'; }
+        else if (a === code) col = (!k || k === '-') ? '#2563eb' : (a === k ? '#16a34a' : '#dc2626');
         else if (k === code && a !== k) col = '#16a34a88';
         if (flags && flags[q] === 'faint' && (a === code || a === '-')) col = '#f59e0b';
         if (!col) return;

@@ -93,7 +93,7 @@ const Scan = {
       const ev = Scoring.evaluate(t, fake);
       const key = Core.normKey(t, Scoring.variantOf(t, s.variant).key);
       const ov = OMR.overlay(s.st, t, s.answers, key, s.flags);
-      const multi = s.flags.map((f, i) => f === 'multi' ? i + 1 : 0).filter(Boolean);
+      const multi = s.flags.map((f, i) => f === 'multi' && !Core.isMulti(key[i]) ? i + 1 : 0).filter(Boolean);
       const faint = s.flags.map((f, i) => f === 'faint' ? i + 1 : 0).filter(Boolean);
       out.innerHTML = `<div class="card">
           <div class="row"><b>${esc(t.name)}</b><span class="sp"></span><span class="badge ${t.type}">${TYPE_NAME[t.type]}</span></div>
@@ -110,7 +110,7 @@ const Scan = {
         </div>
         <div class="card"><h3>Tanilgan varaq</h3><img class="preview" src="${ov.toDataURL('image/jpeg', .8)}" alt=""></div>
         <div class="card"><h3>Javoblar</h3><p class="small muted" style="margin-top:0">Xato tanilgan bo'lsa, to'g'risini bosing. Sariq — tekshirish kerak.</p><div class="keys" id="ra"></div></div>`;
-      renderKeyGrid($('#ra'), t, s.answers, (q, o) => { const a = s.answers.split(''); a[q] = a[q] === o ? '-' : o; s.answers = a.join(''); s.flags[q] = null; setTimeout(draw, 0); return s.answers; }, key, s.flags);
+      renderKeyGrid($('#ra'), t, s.answers, (q, o) => { const a = s.answers.split(''); a[q] = Core.pick(a[q], o, Core.isMulti(key[q]) || Core.isMulti(a[q])); s.answers = a.join(''); s.flags[q] = null; setTimeout(draw, 0); return s.answers; }, key, s.flags);
       $('#rs').onchange = e => { s.studentId = e.target.value; draw(); };
       $('#rv').onchange = e => { s.variant = e.target.value; draw(); };
       $('#again').onclick = () => this.resume();

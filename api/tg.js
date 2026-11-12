@@ -190,7 +190,7 @@ function answersHelp(t, variant) {
     return `${a}–${b}: ${Core.LETTERS.slice(0, Core.opts(s)).split('').join('/')}`;
   });
   const closed = Core.qInfo(t).filter(x => x.kind !== 'open').length;
-  return `📝 <b>${esc(t.name)}</b>${t.variants.length > 1 ? ' · Variant ' + variant : ''}\n\n${parts.join('\n')}\n\nBarcha <b>${closed} ta</b> javobni bitta xabarda yuboring, masalan:\n<code>abcdabcd…</code> yoki <code>1a 2b 3c …</code>\nJavob bermagan savolga <code>-</code> qo'ying.`;
+  return `📝 <b>${esc(t.name)}</b>${t.variants.length > 1 ? ' · Variant ' + variant : ''}\n\n${parts.join('\n')}\n\nBarcha <b>${closed} ta</b> javobni bitta xabarda yuboring, masalan:\n<code>abcdabcd…</code> yoki <code>1a 2b 3c …</code>\nJavob bermagan savolga <code>-</code> qo'ying.${t.variants.some(v => [...(v.key || '')].some(ch => Core.isMulti(ch))) ? "\nBir nechta to'g'ri javobli savolga qavs ichida yozing, masalan: <code>ab(ad)c…</code> yoki <code>3ad</code>." : ''}`;
 }
 
 function progress(data, student, chat) {

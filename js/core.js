@@ -1,6 +1,8 @@
 /* Test tuzilmasi va ball hisoblash yadrosi. Brauzerda (global Core) va serverda (require) bir xil ishlaydi.
    Javoblar satri: har savolga 1 belgi. Tanlov: A–F; True/False: A = True, B = False; yozma savol: '+' to'g'ri, 'x' noto'g'ri.
-   '-' = bo'sh / baholanmagan, '*' = bir nechta belgi. */
+   '-' = bo'sh / baholanmagan, '*' = bir nechta belgi (eski yozuvlar).
+   Bir nechta to'g'ri javob (masalan A va D): bitta belgi bilan kodlanadi — U+0100 + bitmaska (A=1, B=2, C=4 …).
+   Shu sababli har savolga baribir bitta belgi to'g'ri keladi va to'plamlar oddiy tenglik bilan solishtiriladi. */
 (function (root) {
   const LETTERS = 'ABCDEF';
   const round1 = x => Math.round(x * 10) / 10;
@@ -36,9 +38,32 @@
       if (k === 'open') return ['+', 'x'];
       return LETTERS.slice(0, this.opts(s)).split('');
     },
+    /* Harflar to'plami <-> bitta belgi */
+    encSet(letters) {
+      const set = [...new Set((letters || []).filter(L => LETTERS.includes(L)))].sort();
+      if (!set.length) return '-';
+      if (set.length === 1) return set[0];
+      return String.fromCharCode(0x100 + set.reduce((m, L) => m | (1 << LETTERS.indexOf(L)), 0));
+    },
+    decSet(ch) {
+      if (!ch || ch === '-' || ch === '*') return [];
+      const c = ch.charCodeAt(0);
+      if (c >= 0x100 && c < 0x140) return LETTERS.split('').filter((L, i) => (c - 0x100) & (1 << i));
+      return [ch];
+    },
+    isMulti(ch) { return !!ch && ch.charCodeAt(0) >= 0x100 && ch.charCodeAt(0) < 0x140; },
+    /* Tugma bosilganda: multi=true bo'lsa harf to'plamga qo'shiladi/olinadi, aks holda bitta tanlov almashtiriladi. */
+    pick(cur, o, multi) {
+      if (!multi || o === '+' || o === 'x') return cur === o ? '-' : o;
+      const set = this.decSet(cur);
+      const i = set.indexOf(o);
+      if (i >= 0) set.splice(i, 1); else set.push(o);
+      return this.encSet(set);
+    },
     show(s, ch) {
       if (!ch || ch === '-') return '—';
       if (ch === '*') return '2+';
+      if (this.isMulti(ch)) return this.decSet(ch).join(',');
       const k = this.kind(s);
       if (k === 'tf') return ch === 'A' ? 'T' : ch === 'B' ? 'F' : ch;
       if (k === 'open') return ch === '+' ? '✓' : ch === 'x' ? '✗' : ch;
@@ -270,7 +295,7 @@
       const byResult = {};
       results.forEach((r, k) => {
         const o = M.rows[k];
-        const T = round1(o.score);
+        const T = round2(o.score);
         byResult[r.id] = { theta: round2(o.theta), T, grade: this.grade(T * 75 / cfg.max), otm: this.otmPercent(T * 75 / cfg.max), raw: o.raw, pts: o.pts, weighted: o.weighted, bmba: o.T, rasch: o.R };
       });
       return { byResult, items, few: M.few, cfg };
@@ -309,23 +334,37 @@
         const i = LETTERS.indexOf(ch);
         return i >= 0 && i < this.opts(info[q].sec) ? ch : null;
       };
+      const convMany = (q, str) => {
+        const ls = str.replace(/[^A-FT+\-]/g, '').split('');
+        if (ls.length <= 1) return conv(q, ls[0] || '-');
+        if (info[q].kind !== 'choice') return null;
+        const vs = ls.map(L => conv(q, L));
+        if (vs.some(v => v == null || v === '-')) return null;
+        return this.encSet(vs);
+      };
       if (/^\s*\d{1,3}\s*[-.):]?\s*[A-FT]/.test(s)) {
-        const re = /(\d{1,3})\s*[-.):]?\s*([A-FT+\-])/g;
+        const re = /(\d{1,3})\s*[-.):]?\s*([A-FT+\-](?:[\s,]*[A-F])*)/g;
         let m, k = 0;
         while ((m = re.exec(s))) {
           const q = +m[1] - 1;
           if (q < 0 || q >= info.length || info[q].kind === 'open') continue;
-          const v = conv(q, m[2]);
-          if (v == null) return { error: `${q + 1}-savol uchun "${m[2]}" javobi mumkin emas` };
+          const v = convMany(q, m[2]);
+          if (v == null) return { error: `${q + 1}-savol uchun "${m[2].trim()}" javobi mumkin emas` };
           out[q] = v; k++;
         }
         if (!k) return { error: 'Javoblar topilmadi' };
       } else {
-        const chars = s.replace(/TRUE/g, 'T').replace(/FALSE/g, 'F').replace(/\s+/g, '').split('');
+        const toks = [];
+        const src = s.replace(/TRUE/g, 'T').replace(/FALSE/g, 'F').replace(/\s+/g, '');
+        for (let i = 0; i < src.length; i++) {
+          if (src[i] === '(' || src[i] === '[') { const j = src.indexOf(src[i] === '(' ? ')' : ']', i); if (j < 0) return { error: 'Qavs yopilmagan' }; toks.push(src.slice(i + 1, j)); i = j; }
+          else toks.push(src[i]);
+        }
+        const chars = toks;
         if (chars.length !== closed.length) return { error: `${closed.length} ta javob kerak, siz ${chars.length} ta yubordingiz` };
         for (let j = 0; j < closed.length; j++) {
           const q = closed[j];
-          const v = conv(q, chars[j]);
+          const v = chars[j].length > 1 ? convMany(q, chars[j]) : conv(q, chars[j]);
           if (v == null) return { error: `${q + 1}-savol uchun "${chars[j]}" javobi mumkin emas` };
           out[q] = v;
         }

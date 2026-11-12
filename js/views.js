@@ -24,14 +24,20 @@ function emptyBox(icon, text, btn) {
 function quickToString(t, s, base) {
   const info = Core.qInfo(t);
   const arr = (base || '-'.repeat(info.length)).split('');
-  const chars = String(s || '').toUpperCase().replace(/TRUE/g, 'T').replace(/FALSE/g, 'F').replace(/[^A-FT\-+]/g, '').split('');
+  const src = String(s || '').toUpperCase().replace(/TRUE/g, 'T').replace(/FALSE/g, 'F').replace(/[^A-FT\-+()[\]]/g, '');
+  const chars = [];
+  for (let i = 0; i < src.length; i++) {
+    if (src[i] === '(' || src[i] === '[') { const j = src.indexOf(src[i] === '(' ? ')' : ']', i); if (j < 0) break; chars.push(src.slice(i + 1, j)); i = j; }
+    else if (src[i] !== ')' && src[i] !== ']') chars.push(src[i]);
+  }
   let j = 0, used = 0;
   for (let q = 0; q < info.length && j < chars.length; q++) {
     if (info[q].kind === 'open') continue;
     const ch = chars[j++];
     if (ch === '-') { arr[q] = '-'; used++; continue; }
     if (info[q].kind === 'tf') { arr[q] = ch === 'T' || ch === 'A' || ch === '+' ? 'A' : ch === 'F' || ch === 'B' ? 'B' : arr[q]; used++; continue; }
-    if (Core.LETTERS.indexOf(ch) >= 0 && Core.LETTERS.indexOf(ch) < Core.opts(info[q].sec)) { arr[q] = ch; used++; }
+    const ok = ch.split('').filter(L => Core.LETTERS.indexOf(L) >= 0 && Core.LETTERS.indexOf(L) < Core.opts(info[q].sec));
+    if (ok.length) { arr[q] = Core.encSet(ok); used++; }
   }
   return { value: arr.join(''), used };
 }
@@ -336,16 +342,18 @@ const V = {
         <div class="row"><b>Variant ${v.code}</b><span class="sp"></span><span class="muted small">${filled} / ${closedN}</span></div>
         <label class="f" style="margin-top:10px"><span>Tez kiritish (masalan: ABCDA BCD…${hasTF ? ', True/False uchun T yoki F' : ''}; bo'shliqlar e'tiborga olinmaydi${info.some(x => x.kind === 'open') ? '; yozma savollar o\'tkazib yuboriladi' : ''})</span>
           <div class="row"><input class="in" id="quick" placeholder="ABCD…" autocapitalize="characters"><button class="btn" id="qapply">Qo'llash</button></div></label>
+        <label class="chk" style="border:0"><input type="checkbox" id="kmulti" ${V._kmulti ? 'checked' : ''}> Bir nechta to'g'ri javob belgilash (masalan A va D). Tez kiritishda: <code>(AD)</code></label>
         <div class="keys" id="keys"></div>
         <div class="btns"><label class="btn">📷 Kalitni titul varaqdan<input type="file" id="kscan" accept="image/*" hidden></label><label class="btn">📄 Savol varag'idan (OCR)<input type="file" id="kocr" accept="image/*" multiple hidden></label></div>
         <div id="kst" class="small muted"></div>
         <div class="btns"><button class="btn pri" id="kpdf">Kalit PDF</button>${t.variants.length > 1 ? `<button class="btn" id="kcopy">Boshqa variantlarga nusxalash</button>` : ''}<button class="btn danger" id="kclr">Tozalash</button></div>
       </div>`;
       renderKeyGrid($('#keys', c), t, v.key, (q, opt) => {
-        const arr = v.key.split(''); arr[q] = arr[q] === opt ? '-' : opt; v.key = arr.join(''); DB.save();
+        const arr = v.key.split(''); arr[q] = Core.pick(arr[q], opt, V._kmulti || Core.isMulti(arr[q])); v.key = arr.join(''); DB.save();
         return v.key;
       });
       $$('[data-v]', c).forEach(b => b.onclick = () => { vi = +b.dataset.v; V._kv = { t: t.id, i: vi }; draw(); });
+      $('#kmulti', c).onchange = e => { V._kmulti = e.target.checked; };
       $('#qapply', c).onclick = () => {
         const r = quickToString(t, $('#quick', c).value, v.key);
         if (!r.used) return;
@@ -367,7 +375,7 @@ const V = {
           if (info && info.testId !== t.id) { $('#kst', c).innerHTML = '<span class="bad">Bu varaq boshqa testga tegishli.</span>'; return; }
           const rd = OMR.read(sres, t);
           const tv = info && info.variant ? t.variants.find(x => x.code === info.variant) || v : v;
-          const k = rd.answers.split('').map(ch => (ch === '*' ? '-' : ch)).join('');
+          const k = rd.answers;
           tv.key = Core.normKey(t, k); DB.save();
           const bad = rd.flags.map((x, i) => (x ? i + 1 : 0)).filter(Boolean);
           toast(`Variant ${tv.code} kaliti varaqdan o'qildi`);
@@ -539,7 +547,7 @@ const V = {
         <div class="card"><h3>Javoblar</h3><p class="small muted" style="margin-top:0">Noto'g'ri tanilgan bo'lsa, to'g'ri variantni bosing. Yashil chegarali — kalit.</p><div class="keys" id="ans"></div></div>`;
       layout('Natija', body, { back: `#/test/${t.id}/natija`, tab: 'tests' });
       renderKeyGrid($('#ans'), t, r.answers, (q, opt) => {
-        const a = r.answers.split(''); a[q] = a[q] === opt ? '-' : opt; r.answers = a.join(''); DB.save();
+        const a = r.answers.split(''); a[q] = Core.pick(a[q], opt, Core.isMulti(key[q]) || Core.isMulti(a[q])); r.answers = a.join(''); DB.save();
         setTimeout(draw, 0); return r.answers;
       }, key);
       $$('[data-og]').forEach(b => b.onclick = () => { const a = r.answers.split(''); const q = +b.dataset.og; a[q] = a[q] === b.dataset.v ? '-' : b.dataset.v; r.answers = a.join(''); DB.save(); draw(); });
@@ -742,18 +750,20 @@ function renderKeyGrid(el, t, value, onPick, key, flags) {
     if (x.kind === 'open' && !key) { html += `<div class="kr"><span class="n">${q + 1}.</span><span class="small muted">yozma — o'qituvchi baholaydi</span></div>`; return; }
     html += `<div class="kr ${fl ? 'flag' : ''}"><span class="n">${q + 1}.</span>${codes.map((o, i) => {
       let cls = '';
-      const v = value[q];
-      if (v === o) cls = key ? (key[q] && key[q] !== '-' && x.kind !== 'open' ? (key[q] === o ? 'ok' : 'no') : (x.kind === 'open' ? (o === '+' ? 'ok' : 'no') : 'on')) : 'on';
-      if (key && x.kind !== 'open' && key[q] === o && v !== o) cls += ' key';
+      const vs = Core.decSet(value[q]).concat(value[q] === '+' || value[q] === 'x' ? [value[q]] : []);
+      const ks = key ? Core.decSet(key[q]) : [];
+      const has = vs.includes(o);
+      if (has) cls = key ? (key[q] && key[q] !== '-' && x.kind !== 'open' ? (ks.includes(o) ? 'ok' : 'no') : (x.kind === 'open' ? (o === '+' ? 'ok' : 'no') : 'on')) : 'on';
+      if (key && x.kind !== 'open' && ks.includes(o) && !has) cls += ' key';
       return `<button type="button" class="kb ${cls}" data-q="${q}" data-o="${o}">${labels[i]}</button>`;
-    }).join('')}${value[q] === '*' ? '<span class="small" style="color:var(--acc)">2+</span>' : ''}</div>`;
+    }).join('')}${value[q] === '*' ? '<span class="small" style="color:var(--acc)">2+</span>' : ''}${key && Core.isMulti(key[q]) ? '<span class="small muted">ko‘p</span>' : ''}</div>`;
   });
   el.innerHTML = html;
   el.onclick = e => {
     const b = e.target.closest('.kb'); if (!b) return;
     const q = +b.dataset.q;
     const nv = onPick(q, b.dataset.o);
-    if (!key) $$(`.kb[data-q="${q}"]`, el).forEach(x => x.classList.toggle('on', nv[q] === x.dataset.o));
+    if (!key) $$(`.kb[data-q="${q}"]`, el).forEach(x => x.classList.toggle('on', Core.decSet(nv[q]).includes(x.dataset.o) || nv[q] === x.dataset.o));
   };
 }
 

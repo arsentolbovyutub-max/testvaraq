@@ -14,7 +14,7 @@ const DB = {
   _snap: null,
   empty() {
     return {
-      v: 2, center: null, users: [], groups: [], students: [], tests: [], results: [], appeals: [], broadcasts: [],
+      v: 3, center: null, users: [], groups: [], students: [], tests: [], results: [], appeals: [], broadcasts: [],
       settings: { autoNotify: true },
       deleted: {}, _cu: 0,
       session: null, cloud: null
@@ -32,7 +32,13 @@ const DB = {
   /* Eski ma'lumotlarni yangi tuzilmaga o'tkazish. */
   migrate() {
     const d = this.data;
-    if (d.v >= 2) return;
+    if (d.v === 2) {
+      // 3-versiya: Rasch testlar rasmiy BMBA formulasiga (Z = (θ − μ)/σ, T = 50 + 10·Z, chegarasiz)
+      d.tests.forEach(t => { if (t.rasch && t.rasch.mode === 'rasch') t.rasch.mode = 'bmba'; });
+      d.v = 3;
+      return;
+    }
+    if (d.v >= 3) return;
     d.tests.forEach(t => {
       t.sections.forEach((s, i) => {
         if (!s.kind) s.kind = 'choice';
@@ -42,7 +48,8 @@ const DB = {
     });
     if (d.settings && d.settings.certPercent) delete d.settings.certPercent;
     if (d.settings && d.settings.bot && d.settings.bot.key) delete d.settings.bot; // eski bot sozlamasi: yangi tizimda qayta ulanadi
-    d.v = 2;
+    d.tests.forEach(t => { if (t.rasch && t.rasch.mode === 'rasch') t.rasch.mode = 'bmba'; });
+    d.v = 3;
   },
   snapshot() {
     const m = new Map();

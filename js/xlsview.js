@@ -20,7 +20,7 @@ V.xls = function () {
       const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: 'array' });
       const a = XlsCalc.analyze(XLSX, wb);
       if (a.error) { $('#xout').innerHTML = `<div class="card"><h3 class="bad">Hisoblab bo'lmadi</h3><p class="small">${esc(a.error)}</p></div>`; return; }
-      Object.assign(st, { R: a.result, parsed: a.parsed, file: f.name, format: a.format, sections: a.result.sections.map(s => Object.assign({}, s)), negative: 0, raschMode: st.raschMode || 'weighted', raschMax: st.raschMax || 75 });
+      Object.assign(st, { R: a.result, parsed: a.parsed, file: f.name, format: a.format, sections: a.result.sections.map(s => Object.assign({}, s)), negative: 0, raschMode: st.raschMode || 'rasch', raschMax: st.raschMax || 75 });
       recompute(); return;
       drawResult();
     } catch (err) { console.error(err); $('#xout').innerHTML = `<div class="card bad">Faylni o'qib bo'lmadi: ${esc(err.message)}</div>`; }
@@ -46,12 +46,12 @@ V.xls = function () {
         <label class="f" style="margin-top:10px"><span>Noto'g'ri javob uchun ayiriladigan ball (0 — ayirilmaydi)</span><input class="in" id="neg" type="number" step="0.05" min="0" value="${st.negative}" style="max-width:140px"></label>
         ${S.kr20 != null ? `<p class="small muted" style="margin:0">Test ishonchliligi (KR-20): <b>${S.kr20}</b> ${S.kr20 >= 0.8 ? '— yaxshi' : S.kr20 >= 0.6 ? "— o'rtacha" : '— past'}</p>` : ''}</div>
       <div class="card"><h3>Rasch hisoblash</h3>
-        <div class="grid2"><label class="f"><span>Usul</span><select class="in" id="rmode"><option value="weighted" ${st.raschMode !== 'bmba' ? 'selected' : ''}>Savol qiyinligi bo'yicha ball</option><option value="bmba" ${st.raschMode === 'bmba' ? 'selected' : ''}>Milliy sertifikat (BMBA T-ball)</option></select></label>
+        <div class="grid2"><label class="f"><span>Usul</span><select class="in" id="rmode">${RASCH_MODES.map(([k, l]) => `<option value="${k}" ${st.raschMode === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label class="f"><span>Maksimal ball</span><input class="in" id="rmax" type="number" min="10" max="1000" value="${st.raschMax}"></label></div>
-        <p class="small muted" style="margin:0">${st.raschMode === 'bmba' ? "θ (Rasch qobiliyat) → Z = (θ − o'rtacha)/σ → T = 50 + 10·Z, 0…maksimal oralig'ida." : "Kam topilgan (qiyin) savolga ko'p ball, ko'p topilganiga kam ball. Barcha savollar ballari yig'indisi = maksimal ball."}${R.few ? ' <b class="bad">Ishtirokchi kam — natija taxminiy.</b>' : ''}</p></div>
+        <p class="small muted" style="margin:0">${RASCH_DESC[st.raschMode] || ''}${R.few ? ' <b class="bad">Ishtirokchi kam — natija taxminiy.</b>' : ''}</p></div>
       <div class="btns" style="margin:0 0 12px"><button class="btn pri sm" id="xx">⬇ Excel (to'liq hisob)</button><button class="btn sm" id="xp">PDF</button><button class="btn sm" id="xi">Ilovaga test sifatida saqlash</button></div>
-      <div class="card tw" style="padding:4px 8px"><table class="t"><thead><tr><th>#</th><th>O'quvchi</th><th class="num">Rasch ball</th><th>Daraja</th><th class="num">Xom ball</th><th class="num">%</th><th class="num">✓/✗/○</th>${R.sections.map(s => `<th class="num">${esc(s.title)}</th>`).join('')}</tr></thead><tbody>
-        ${R.rows.map(r => `<tr><td>${r.rank}</td><td><b>${esc(r.name)}</b><div class="small muted">${esc(r.roll)}</div></td><td class="num"><b>${r.rasch.T}</b></td><td><span class="pill">${r.rasch.grade}</span></td><td class="num">${r.points}</td><td class="num">${r.percent}</td><td class="num">${r.correct}/${r.wrong}/${r.blank}</td>${r.sections.map(s => `<td class="num">${s.points}</td>`).join('')}</tr>`).join('')}
+      <div class="card tw" style="padding:4px 8px"><table class="t"><thead><tr><th>#</th><th>O'quvchi</th><th class="num">Ball</th><th>Daraja</th><th class="num">OTM foizi</th><th class="num">Xom ball</th><th class="num">%</th><th class="num">✓/✗/○</th>${R.sections.map(s => `<th class="num">${esc(s.title)}</th>`).join('')}</tr></thead><tbody>
+        ${R.rows.map(r => `<tr><td>${r.rank}</td><td><b>${esc(r.name)}</b><div class="small muted">${esc(r.roll)}</div></td><td class="num"><b>${r.rasch.T}</b></td><td><span class="pill">${r.rasch.grade}</span></td><td class="num">${r.rasch.otm}%</td><td class="num">${r.points}</td><td class="num">${r.percent}</td><td class="num">${r.correct}/${r.wrong}/${r.blank}</td>${r.sections.map(s => `<td class="num">${s.points}</td>`).join('')}</tr>`).join('')}
       </tbody></table></div>
       <div class="card tw"><h3>Savollar tahlili</h3><table class="t"><thead><tr><th>Savol</th><th>Kalit</th><th>To'g'ri</th><th style="width:28%"></th><th class="num">Savol balli</th><th class="num">Ajratish</th><th class="num">Qiyinlik</th><th>Javoblar</th></tr></thead><tbody>
         ${R.items.map(it => `<tr><td>${it.n}</td><td>${esc(it.key)}</td><td>${it.right}/${S.count}</td><td><div class="bar"><i style="width:${it.p}%;background:${it.p < 35 ? 'var(--bad)' : it.p < 65 ? 'var(--acc)' : 'var(--ok)'}"></i></div></td><td class="num"><b>${it.w}</b></td><td class="num ${it.disc < 0 ? 'bad' : ''}">${it.disc}</td><td class="num">${it.b}</td><td class="small muted">${Object.entries(it.dist).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${esc(k)}:${v}`).join(' ')}</td></tr>`).join('')}
@@ -68,8 +68,8 @@ V.xls = function () {
       const T = s => PDF.T(doc, s);
       doc.setFontSize(15); doc.text(T(`Natijalar: ${R.exam || st.file}`), 14, 15);
       doc.setFontSize(9); doc.text(T(`${S.count} o'quvchi · o'rtacha ${S.mean} / ${R.maxPoints} · ${(DB.data.center || {}).name || ''}`), 14, 21);
-      PDF.tbl(doc, { startY: 25, head: [['#', T("O'quvchi"), 'Raqam', 'Rasch ball', 'Daraja', 'Xom ball', '%', T("To'g'ri"), T("Noto'g'ri"), T("Bo'sh"), ...R.sections.map(s => T(s.title))]],
-        body: R.rows.map(r => [r.rank, T(r.name), r.roll, r.rasch.T, r.rasch.grade, r.points, r.percent, r.correct, r.wrong, r.blank, ...r.sections.map(s => s.points)]), theme: 'striped', styles: { fontSize: 8.5 } });
+      PDF.tbl(doc, { startY: 25, head: [['NO', T('ISM FAMILIYA'), 'Raqam', 'BALL', 'DARAJA', 'OTM FOIZI', T("To'g'ri"), T("Noto'g'ri"), T("Bo'sh"), ...R.sections.map(s => T(s.title))]],
+        body: R.rows.map(r => [r.rank, T(r.name), r.roll, r.rasch.T.toFixed(2), r.rasch.grade, r.rasch.otm.toFixed(2) + '%', r.correct, r.wrong, r.blank, ...r.sections.map(s => s.points)]), theme: 'striped', styles: { fontSize: 8.5 } });
       doc.addPage();
       doc.setFontSize(13); doc.text(T('Savollar tahlili'), 14, 15);
       PDF.tbl(doc, { startY: 20, head: [['Savol', T("Bo'lim"), 'Kalit', T("To'g'ri"), '%', 'Savol balli', 'Ajratish', 'Qiyinlik']], body: R.items.map(it => [it.n, T(it.section), it.key, it.right, it.p, it.w, it.disc, it.b]), theme: 'grid', styles: { fontSize: 8, halign: 'center' } });
@@ -85,7 +85,7 @@ V.xls = function () {
     const key = R.key.map(k => (k === 'True' ? 'A' : k === 'False' ? 'B' : k || '-')).join('');
     const name = (R.exam || st.file.replace(/\.\w+$/, '')).trim();
     const g = { id: DB.id(), name: 'Import: ' + name, teacherId: DB.me().id, createdAt: new Date().toISOString() };
-    const t = { id: DB.id(), type: 'rasch', rasch: { mode: st.raschMode || 'weighted', max: st.raschMax || 75 }, name, date: today(), sections, variants: [{ code: 'A', key }], groupIds: [g.id], createdAt: new Date().toISOString(), createdBy: DB.me().id, source: 'excel' };
+    const t = { id: DB.id(), type: 'rasch', rasch: { mode: st.raschMode || 'rasch', max: st.raschMax || 75 }, name, date: today(), sections, variants: [{ code: 'A', key }], groupIds: [g.id], createdAt: new Date().toISOString(), createdBy: DB.me().id, source: 'excel' };
     DB.data.groups.push(g);
     DB.data.tests.push(t);
     let created = 0, matched = 0;

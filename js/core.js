@@ -129,8 +129,10 @@
       if (T >= 55) return 'B';
       if (T >= 50) return 'C+';
       if (T >= 46) return 'C';
-      return '—';
+      return 'NC';
     },
+    /* OTMga kirishda sertifikat foizi: A va undan yuqori (65+) — 100%, 46…65 — ball/65, 46 dan past — 0. */
+    otmPercent(T) { return T >= 65 ? 100 : T >= 46 ? round2(T / 65 * 100) : 0; },
 
     /* ---------------- RASCH ----------------
        Savollar 0/1 (yozma javob ham alohida savol). Qiyinlik (b) — shu testni yechgan hammaning javoblari bo'yicha (JML).
@@ -141,7 +143,7 @@
          'bmba'     — Milliy sertifikat (BMBA) usuli: θ (WLE) → Z = (θ − μ)/σ → T = 50 + 10·Z, [0; maksimal] oralig'ida. */
     raschCfg(test) {
       const r = test.rasch || {};
-      return { mode: r.mode === 'bmba' ? 'bmba' : 'weighted', max: r.max > 0 ? +r.max : 75 };
+      return { mode: ['weighted', 'bmba', 'rasch'].includes(r.mode) ? r.mode : 'rasch', max: r.max > 0 ? +r.max : 75 };
     },
 
     /* Savollar qiyinligini baholash (JML). X: o'quvchilar x savollar (0/1). */
@@ -205,6 +207,24 @@
       return th;
     },
 
+    /* Qobiliyat θ — MLE (0 va maksimal natijada WLE ishlatiladi). */
+    raschMLE(x, b, act) {
+      const sig = z => 1 / (1 + Math.exp(-z));
+      let r = 0, L = 0;
+      for (let i = 0; i < b.length; i++) if (act[i]) { L++; r += x[i]; }
+      if (!L) return 0;
+      if (r <= 0 || r >= L) return this.raschWLE(x, b, act);
+      let th = Math.log(r / (L - r));
+      for (let it = 0; it < 100; it++) {
+        let e = 0, inf = 0;
+        for (let i = 0; i < b.length; i++) if (act[i]) { const p = sig(th - b[i]); e += p; inf += p * (1 - p); }
+        const d = Math.max(-1, Math.min(1, (r - e) / (inf || 1e-9)));
+        th += d;
+        if (Math.abs(d) < 1e-7) break;
+      }
+      return th;
+    },
+
     /* Savol ballari (qiyinlik bo'yicha): w = b − b_min + 1, yig'indisi = max. */
     raschWeights(b, max) {
       if (!b.length) return [];
@@ -224,15 +244,17 @@
       const out = X.map(x => {
         const pts = x.map((v, i) => (v ? w[i] : 0));
         const weighted = round2(Math.min(cfg.max, pts.reduce((a, y) => a + y, 0)));
-        return { pts, weighted, theta: this.raschWLE(x, C.b, C.act), raw: x.reduce((a, y) => a + y, 0) };
+        return { pts, weighted, theta: this.raschWLE(x, C.b, C.act), mle: this.raschMLE(x, C.b, C.act), raw: x.reduce((a, y) => a + y, 0) };
       });
       const th = out.map(o => o.theta);
       const mu = P ? th.reduce((a, y) => a + y, 0) / P : 0;
       const sd = P > 1 ? Math.sqrt(th.reduce((a, y) => a + (y - mu) ** 2, 0) / (P - 1)) : 0;
+      const mm = P ? out.reduce((a, o) => a + o.mle, 0) / P : 0;
       out.forEach(o => {
         o.Z = sd > 1e-9 ? (o.theta - mu) / sd : 0;
-        o.T = round2(Math.max(0, Math.min(cfg.max, 50 + 10 * o.Z)));
-        o.score = cfg.mode === 'bmba' ? o.T : o.weighted;
+        o.T = round2(Math.max(0, Math.min(cfg.max, 50 + 10 * o.Z)));               // BMBA: Z = (θ − μ)/σ
+        o.R = round2(Math.max(0, Math.min(cfg.max, 50 + 10 * (o.mle - mm))));      // Rasch T: 50 + 10·(θ − μ), logit birligida
+        o.score = cfg.mode === 'bmba' ? o.T : cfg.mode === 'rasch' ? o.R : o.weighted;
       });
       return { rows: out, b: C.b, w, s: C.s, few: C.few, mu, sd };
     },
@@ -249,7 +271,7 @@
       results.forEach((r, k) => {
         const o = M.rows[k];
         const T = round1(o.score);
-        byResult[r.id] = { theta: round2(o.theta), T, grade: this.grade(T * 75 / cfg.max), raw: o.raw, pts: o.pts, weighted: o.weighted, bmba: o.T };
+        byResult[r.id] = { theta: round2(o.theta), T, grade: this.grade(T * 75 / cfg.max), otm: this.otmPercent(T * 75 / cfg.max), raw: o.raw, pts: o.pts, weighted: o.weighted, bmba: o.T, rasch: o.R };
       });
       return { byResult, items, few: M.few, cfg };
     },
@@ -262,7 +284,7 @@
         const ev = this.evaluate(test, r, st);
         const g = st && st.groupId && groupOf ? groupOf(st.groupId) : null;
         const row = { r, ev, st, name: st ? st.name : (r.guestName || "Noma'lum"), group: g ? g.name : '', score: ev.points };
-        if (R) { const x = R.byResult[r.id]; row.T = x.T; row.grade = x.grade; row.score = x.T; }
+        if (R) { const x = R.byResult[r.id]; row.T = x.T; row.grade = x.grade; row.otm = x.otm; row.score = x.T; }
         return row;
       });
       rows.sort((a, b) => b.score - a.score || b.ev.correct - a.ev.correct || a.name.localeCompare(b.name));

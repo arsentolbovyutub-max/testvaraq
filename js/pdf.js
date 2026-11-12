@@ -78,8 +78,8 @@ const PDF = {
     doc.setFontSize(10); doc.text(T(`${center} · ${fmtDate(test.date)} · ${rows.length} ta o'quvchi`), 14, 22);
     let head, body;
     if (test.type === 'rasch') {
-      head = [['#', T("O'quvchi"), 'Guruh', T("To'g'ri"), 'Ball (Rasch)', 'Daraja', ...(test.sections.length > 1 ? test.sections.map(s => T(s.title)) : [])]];
-      body = rows.map(x => [x.rank, T(x.name), T(x.group), `${x.ev.correct}/${x.ev.total}`, x.T, x.grade, ...(test.sections.length > 1 ? x.ev.sections.map(s => `${s.correct}/${s.count}`) : [])]);
+      head = [['#', T("O'quvchi"), 'Guruh', T("To'g'ri"), 'Ball (Rasch)', 'Daraja', 'OTM foizi', ...(test.sections.length > 1 ? test.sections.map(s => T(s.title)) : [])]];
+      body = rows.map(x => [x.rank, T(x.name), T(x.group), `${x.ev.correct}/${x.ev.total}`, x.T.toFixed(2), x.grade, x.otm.toFixed(2) + '%', ...(test.sections.length > 1 ? x.ev.sections.map(s => `${s.correct}/${s.count}`) : [])]);
     } else if (test.sections.length > 1) {
       head = [['#', T("O'quvchi"), 'Guruh', 'Var.', ...test.sections.map(s => T(s.title)), 'Ball', '%']];
       body = rows.map(x => [x.rank, T(x.name), T(x.group), x.r.variant, ...x.ev.sections.map(s => s.cert ? `${s.points} (${T(s.cert)})` : `${s.correct}/${s.count} · ${s.points}`), x.ev.points + ' / ' + x.ev.max, x.ev.percent + '%']);

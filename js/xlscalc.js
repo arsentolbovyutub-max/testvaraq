@@ -22,6 +22,8 @@ const XlsCalc = (() => {
     return { v: parts[0], multi: false };
   }
   const isTF = k => k === 'T' || k === 'F_';
+  /* Bir nechta to'g'ri javobli savollar (kalit "A, D"): to'plamlar teng bo'lsa to'g'ri. */
+  const sameAns = (a, k) => !!a && !!k && String(a).split(',').sort().join(',') === String(k).split(',').sort().join(',');
   const show = v => (v === 'T' ? 'True' : v === 'F_' ? 'False' : v);
 
   /* Ish varag'idan 2D massiv. */
@@ -210,7 +212,7 @@ const XlsCalc = (() => {
         const a = s.answers[q], k = s.keys?.[q] || key[q], si = secOf(q), w = sections[si]?.weight ?? 1;
         let m;
         if (!a.v) { blank++; secs[si].blank++; m = -1; }
-        else if (a.multi || a.v !== k) { wrong++; secs[si].wrong++; if (a.multi) multi++; m = 0; points -= neg; secs[si].points -= neg; }
+        else if (!sameAns(a.v, k)) { wrong++; secs[si].wrong++; if (a.multi) multi++; m = 0; points -= neg; secs[si].points -= neg; }
         else { correct++; secs[si].correct++; points += w; secs[si].points += w; m = 1; }
         marks.push(m);
       }
@@ -224,10 +226,10 @@ const XlsCalc = (() => {
     rawSorted.forEach((r, i) => { r.rawRank = i && r.points === rawSorted[i - 1].points ? rawSorted[i - 1].rawRank : i + 1; });
     // Rasch: savol qiyinligi bo'yicha ball (yoki BMBA T-ball)
     const scoring = opts.scoring || 'rasch';
-    const cfg = { mode: opts.raschMode === 'bmba' ? 'bmba' : 'weighted', max: opts.raschMax > 0 ? +opts.raschMax : 75 };
+    const cfg = { mode: ['weighted', 'bmba', 'rasch'].includes(opts.raschMode) ? opts.raschMode : 'rasch', max: opts.raschMax > 0 ? +opts.raschMax : 75 };
     const X = rows.map(r => r.marks.map(m => (m === 1 ? 1 : 0)));
     const M = rows.length ? CoreRef.raschScoreMatrix(X, cfg) : { rows: [], b: [], w: [], few: true };
-    rows.forEach((r, i) => { const o = M.rows[i]; const T = r2(o.score); r.rasch = { theta: r2(o.theta), T, grade: CoreRef.grade(T * 75 / cfg.max), weighted: o.weighted, bmba: o.T, pts: o.pts }; });
+    rows.forEach((r, i) => { const o = M.rows[i]; const T = r2(o.score); r.rasch = { theta: r2(o.theta), T, grade: CoreRef.grade(T * 75 / cfg.max), otm: CoreRef.otmPercent(T * 75 / cfg.max), weighted: o.weighted, bmba: o.T, rt: o.R, pts: o.pts }; });
     const key2 = r => (scoring === 'rasch' ? r.rasch.T : r.points);
     const sorted = [...rows].sort((a, b) => key2(b) - key2(a) || b.correct - a.correct || a.name.localeCompare(b.name));
     sorted.forEach((r, i) => { r.rank = i && key2(r) === key2(sorted[i - 1]) ? sorted[i - 1].rank : i + 1; });
@@ -285,8 +287,8 @@ const XlsCalc = (() => {
   /* Natijalarni Excel'ga yozish (3 varaq). */
   function toWorkbook(XLSX, R) {
     const wb = XLSX.utils.book_new();
-    const head = ['O‘rin', 'Raqam', 'Ism', `Rasch ball (${R.rcfg.max})`, 'Daraja', 'Qiyinlik bo‘yicha ball', 'BMBA T-ball', 'Xom ball', 'Maks', '%', 'Baho (5)', 'To‘g‘ri', 'Noto‘g‘ri', 'Javobsiz', ...R.sections.map(s => s.title)];
-    const data = R.rows.map(r => [r.rank, r.roll, r.name, r.rasch.T, r.rasch.grade, r.rasch.weighted, r.rasch.bmba, r.points, R.maxPoints, r.percent, r.grade5, r.correct, r.wrong, r.blank, ...r.sections.map(s => s.points)]);
+    const head = ['O‘rin', 'Raqam', 'Ism', `Ball (${R.rcfg.max})`, 'Daraja', 'OTM foizi', 'Rasch T (θ − o‘rtacha)', 'BMBA T (Z)', 'Qiyinlik bo‘yicha ball', 'Xom ball', 'Maks', '%', 'Baho (5)', 'To‘g‘ri', 'Noto‘g‘ri', 'Javobsiz', ...R.sections.map(s => s.title)];
+    const data = R.rows.map(r => [r.rank, r.roll, r.name, r.rasch.T, r.rasch.grade, r.rasch.otm / 100, r.rasch.rt, r.rasch.bmba, r.rasch.weighted, r.points, R.maxPoints, r.percent, r.grade5, r.correct, r.wrong, r.blank, ...r.sections.map(s => s.points)]);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([head, ...data]), 'Natijalar');
     const ih = ['Savol', 'Bo‘lim', 'Kalit', 'To‘g‘ri soni', 'To‘g‘ri %', 'Savol balli', 'Rasch qiyinlik (logit)', 'Ajratish', 'Javoblar taqsimoti'];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([ih, ...R.items.map(it => [it.n, it.section, it.key, it.right, it.p, it.w, it.b, it.disc, Object.entries(it.dist).map(([k, v]) => `${k}:${v}`).join('  ')])]), 'Savollar tahlili');

@@ -1,4 +1,10 @@
 /* Ekranlar. Har bir ko'rinish #app ichiga chiziladi va o'z hodisalarini bog'laydi. */
+const RASCH_MODES = [['rasch', 'Rasch T-ball: 50 + 10·(θ − o‘rtacha)'], ['bmba', 'BMBA: Z = (θ − o‘rtacha)/σ'], ['weighted', 'Savol qiyinligi bo‘yicha ball']];
+const RASCH_DESC = {
+  rasch: "Har o'quvchi uchun Rasch qobiliyati θ (logit) hisoblanadi, ball = 50 + 10·(θ − guruh o'rtachasi). O'rtacha natija 50 ball; bir xil sondagi to'g'ri javob deyarli bir xil ball beradi. Repetitsion test hisobotlaridagi usul.",
+  bmba: "Rasmiy formula: Z = (θ − o'rtacha)/standart og'ish, T = 50 + 10·Z (0…maksimal). O'rtacha 50, standart og'ish 10.",
+  weighted: "Har savol balli Rasch qiyinligiga mutanosib: kam topilgan savolga ko'p ball. Barcha savollar yig'indisi = maksimal ball; hammasini topgan o'quvchi maksimal ball oladi."
+};
 const TYPE_NAME = { block: 'Blok test (DTM)', simple: 'Oddiy test', rasch: 'Rasch test' };
 
 function layout(title, body, o = {}) {
@@ -139,7 +145,7 @@ const V = {
       main1: t && t.type === 'block' ? t.sections[3].subject : 'Matematika', main2: t && t.type === 'block' ? t.sections[4].subject : 'Fizika',
       secs: t && t.type !== 'block' ? cloneSecs(t.sections) : [{ title: 'Matematika', subject: 'Matematika', count: 30, weight: 1, kind: 'choice', options: 4 }],
       variants: t ? t.variants.length : 1, groupIds: t ? (t.groupIds || []).slice() : [],
-      rmode: t && t.rasch && t.rasch.mode === 'bmba' ? 'bmba' : 'weighted', rmax: t && t.rasch && t.rasch.max ? t.rasch.max : 75
+      rmode: t && t.rasch && t.rasch.mode ? t.rasch.mode : 'rasch', rmax: t && t.rasch && t.rasch.max ? t.rasch.max : 75
     };
     const subjOpts = sel => SUBJECTS.map(s => `<option ${s === sel ? 'selected' : ''}>${esc(s)}</option>`).join('');
     const secRow = (s, i) => `<div class="secrow" data-i="${i}">
@@ -182,9 +188,9 @@ const V = {
               <label class="f"><span>2-asosiy fan (2.1 ball)</span><select class="in" name="main2">${subjOpts(st.main2)}</select></label>
             </div>` : ''}
           ${st.type === 'rasch' ? `<div class="grid2">
-            <label class="f"><span>Rasch hisoblash usuli</span><select class="in" name="rmode"><option value="weighted" ${st.rmode === 'weighted' ? 'selected' : ''}>Savol qiyinligi bo'yicha ball</option><option value="bmba" ${st.rmode === 'bmba' ? 'selected' : ''}>Milliy sertifikat (BMBA T-ball)</option></select></label>
+            <label class="f"><span>Rasch hisoblash usuli</span><select class="in" name="rmode">${RASCH_MODES.map(([k, l]) => `<option value="${k}" ${st.rmode === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
             <label class="f"><span>Maksimal ball</span><input class="in" name="rmax" type="number" min="10" max="1000" value="${st.rmax}"></label></div>
-            <p class="small muted" style="margin-top:-6px">${st.rmode === 'bmba' ? "BMBA: θ → Z = (θ − o'rtacha)/standart og'ish → T = 50 + 10·Z (0…maksimal). O'rtacha natija 50 ball." : "Har savol balli Rasch qiyinligiga mutanosib; barcha savollar yig'indisi = maksimal ball. Hammasini topgan o'quvchi maksimal ball oladi."}</p>` : ''}
+            <p class="small muted" style="margin-top:-6px">${RASCH_DESC[st.rmode]}</p>` : ''}
           <label class="f"><span>Variantlar soni (A, B, C…)</span><select class="in" name="variants">${[1, 2, 3, 4, 5, 6, 7, 8].map(k => `<option ${k === st.variants ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
         </div>
         ${st.type !== 'block' ? `<div class="card"><div class="row"><h3 style="margin:0">Bo'limlar (mavzular)</h3><span class="sp"></span><span class="muted small">${total} savol</span></div>
@@ -442,9 +448,9 @@ const V = {
       </div>
       ${rasch && rasch.few ? `<p class="small" style="color:var(--acc)">Rasch hisobi uchun kamida 3 ta natija kerak. Hozircha qiyinliklar teng deb olindi.</p>` : ''}
       ${pendingOpen ? `<p class="small warnbox">✍ ${pendingOpen} ta yozma javob baholanmagan — natijani ochib ✓ yoki ✗ ni bosing.</p>` : ''}
-      ${rows.length ? `<div class="card tw" style="padding:4px 8px"><table class="t"><thead><tr><th>#</th><th>O'quvchi</th>${isR ? `<th class="num">To'g'ri</th><th class="num">Ball</th><th>Daraja</th>` : `<th class="num">To'g'ri</th><th class="num">Ball</th><th class="num">%</th>`}</tr></thead><tbody>
+      ${rows.length ? `<div class="card tw" style="padding:4px 8px"><table class="t"><thead><tr><th>#</th><th>O'quvchi</th>${isR ? `<th class="num">To'g'ri</th><th class="num">Ball</th><th>Daraja</th><th class="num">OTM</th>` : `<th class="num">To'g'ri</th><th class="num">Ball</th><th class="num">%</th>`}</tr></thead><tbody>
         ${rows.map(x => `<tr class="click" data-r="${x.r.id}"><td>${x.rank}</td><td><b>${esc(x.name)}</b>${x.r.source === 'bot' ? ' <span class="badge">bot</span>' : ''}<div class="small muted">${esc(x.group)} · ${x.r.variant}</div></td>
-          ${isR ? `<td class="num">${x.ev.correct}/${x.ev.total}</td><td class="num"><b>${x.T}</b></td><td><span class="pill">${x.grade}</span></td>`
+          ${isR ? `<td class="num">${x.ev.correct}/${x.ev.total}</td><td class="num"><b>${x.T}</b></td><td><span class="pill">${x.grade}</span></td><td class="num">${x.otm}%</td>`
                : `<td class="num">${x.ev.correct}/${x.ev.total}</td><td class="num"><b>${x.ev.points}</b>${x.ev.sections.some(s => s.cert) ? ' <span class="badge">S</span>' : ''}</td><td class="num">${x.ev.percent}%</td>`}</tr>`).join('')}
       </tbody></table></div>` : emptyBox('⌖', "Hali natija yo'q. Javob varaqalarini skanerlang yoki testni botda oching.")}`;
     botCard(t, c, rows);
@@ -486,7 +492,7 @@ const V = {
         <div class="stat"><b>${round1(Math.max(...sc))}</b><span>Eng yuqori</span></div>
         <div class="stat"><b>${round1(Math.min(...sc))}</b><span>Eng past</span></div>
       </div>
-      ${rasch ? `<div class="card"><h3>Darajalar</h3><div class="row wrap">${['A+', ...GRADES.slice(1), '—'].map(g => `<div class="stat" style="min-width:70px;text-align:center"><b>${grades[g] || 0}</b><span>${g}</span></div>`).join('')}</div></div>` : ''}
+      ${rasch ? `<div class="card"><h3>Darajalar</h3><div class="row wrap">${['A+', ...GRADES.slice(1), 'NC'].map(g => `<div class="stat" style="min-width:70px;text-align:center"><b>${grades[g] || 0}</b><span>${g}</span></div>`).join('')}</div></div>` : ''}
       ${t.sections.length > 1 ? `<div class="card"><h3>Bo'limlar bo'yicha o'rtacha</h3>${t.sections.map((s, si) => {
         const a = rows.reduce((acc, x) => acc + x.ev.sections[si].points, 0) / rows.length;
         const mx = round1(s.count * s.weight) || 1;
@@ -517,7 +523,7 @@ const V = {
           ${!st ? `<label class="f" style="margin-top:10px"><span>O'quvchiga bog'lash</span><select class="in" id="link"><option value="">— tanlang —</option>${DB.myStudents().map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></label>` : ''}
           <hr>
           <div class="row wrap">
-            ${R ? `<div><div class="score">${R.T}<span class="muted" style="font-size:16px"> / ${Core.raschCfg(t).max}</span></div><div class="small muted">Rasch ball${Core.raschCfg(t).mode === 'bmba' ? ' (BMBA T)' : ' (savol qiyinligi bo‘yicha)'}</div></div><span class="grade">${R.grade}</span>`
+            ${R ? `<div><div class="score">${R.T}<span class="muted" style="font-size:16px"> / ${Core.raschCfg(t).max}</span></div><div class="small muted">Rasch ball · OTM foizi ${R.otm}%</div></div><span class="grade">${R.grade}</span>`
                 : `<div><div class="score">${ev.points}<span class="muted" style="font-size:16px"> / ${ev.max}</span></div><div class="small muted">Ball · ${ev.percent}%</div></div>`}
             <span class="sp"></span>
             <div class="small"><div class="ok">✓ To'g'ri: <b>${ev.correct}</b></div><div class="bad">✗ Noto'g'ri: <b>${ev.wrong}</b></div><div class="muted">○ Bo'sh: <b>${ev.blank}</b></div></div>

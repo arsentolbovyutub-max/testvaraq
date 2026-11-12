@@ -173,8 +173,8 @@ const V = {
       const groups = DB.myGroups();
       const total = st.secs.reduce((a, s) => a + (+s.count || 0), 0);
       const body = `${t ? '' : `<div class="card"><h3>📄 Savol varag'idan avtomatik</h3>
-          <p class="small muted" style="margin-top:0">Savol varag'ini (bir yoki bir nechta sahifa) suratga oling: savollar soni, har savol variantlari (A–F, True/False, yozma) aniqlanadi. Varaqda "Javoblar: 1-A 2-C …" ro'yxati yoki to'g'ri variant yonida * belgisi bo'lsa — kalit ham avtomatik kiritiladi.</p>
-          <label class="btn block">📷 Savol varag'ini tanlash / suratga olish<input type="file" id="qp" accept="image/*" multiple hidden></label>
+          <p class="small muted" style="margin-top:0">Savollar faylini yuklang — rasm (bir yoki bir nechta sahifa), PDF yoki Word (.docx). Savollar soni, har savol variantlari (A–F, True/False, yozma) aniqlanadi. Faylda "Javoblar: 1-A 2-C …" ro'yxati, to'g'ri variant yonida * belgisi yoki Word'da qalin (bold) / tagiga chizilgan variant bo'lsa — kalit ham avtomatik kiritiladi.</p>
+          <label class="btn block">📄 Savol fayli: rasm, PDF yoki Word<input type="file" id="qp" accept="image/*,.pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple hidden></label>
           <div id="qpout" class="small" style="margin-top:8px"></div></div>`}
         <form id="f">
         <div class="card"><h3>Test turi</h3>
@@ -230,7 +230,7 @@ const V = {
         $('#qp').onchange = async e => {
           const files = [...e.target.files]; if (!files.length) return;
           const out = $('#qpout');
-          out.textContent = 'OCR yuklanmoqda… (birinchi marta ~10 MB, keyin tez)';
+          out.textContent = files.some(f => QPaper.kind(f) === 'image') ? 'OCR yuklanmoqda… (birinchi marta ~10 MB, keyin tez)' : 'Fayl o‘qilmoqda…';
           try {
             const text = await QPaper.recognize(files, (p, i, n) => { if (i) out.textContent = `${i}/${n}-sahifa o'qilmoqda…`; else out.textContent = `O'qilmoqda… ${Math.round(p * 100)}%`; });
             const P = QPaper.parse(text);
@@ -345,7 +345,7 @@ const V = {
           <div class="row"><input class="in" id="quick" placeholder="ABCD…" autocapitalize="characters"><button class="btn" id="qapply">Qo'llash</button></div></label>
         <label class="chk" style="border:0"><input type="checkbox" id="kmulti" ${V._kmulti ? 'checked' : ''}> Bir nechta to'g'ri javob belgilash (masalan A va D). Tez kiritishda: <code>(AD)</code></label>
         <div class="keys" id="keys"></div>
-        <div class="btns"><label class="btn">📷 Kalitni titul varaqdan<input type="file" id="kscan" accept="image/*" hidden></label><label class="btn">📄 Savol varag'idan (OCR)<input type="file" id="kocr" accept="image/*" multiple hidden></label></div>
+        <div class="btns"><label class="btn">📷 Kalitni titul varaqdan<input type="file" id="kscan" accept="image/*" hidden></label><label class="btn">📄 Savol faylidan (rasm, PDF, Word)<input type="file" id="kocr" accept="image/*,.pdf,.docx,.txt" multiple hidden></label></div>
         <div id="kst" class="small muted"></div>
         <div class="btns"><button class="btn pri" id="kpdf">Kalit PDF</button>${t.variants.length > 1 ? `<button class="btn" id="kcopy">Boshqa variantlarga nusxalash</button>` : ''}<button class="btn danger" id="kclr">Tozalash</button></div>
       </div>`;

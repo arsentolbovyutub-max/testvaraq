@@ -20,7 +20,7 @@ V.xls = function () {
       const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: 'array' });
       const a = XlsCalc.analyze(XLSX, wb);
       if (a.error) { $('#xout').innerHTML = `<div class="card"><h3 class="bad">Hisoblab bo'lmadi</h3><p class="small">${esc(a.error)}</p></div>`; return; }
-      Object.assign(st, { R: a.result, parsed: a.parsed, file: f.name, format: a.format, sections: a.result.sections.map(s => Object.assign({}, s)), negative: 0, raschMode: st.raschMode || 'rasch', raschMax: st.raschMax || 75 });
+      Object.assign(st, { R: a.result, parsed: a.parsed, file: f.name, format: a.format, sections: a.result.sections.map(s => Object.assign({}, s)), negative: 0, raschMode: st.raschMode || 'bmba', raschMax: st.raschMax || 75 });
       recompute(); return;
       drawResult();
     } catch (err) { console.error(err); $('#xout').innerHTML = `<div class="card bad">Faylni o'qib bo'lmadi: ${esc(err.message)}</div>`; }
@@ -47,8 +47,8 @@ V.xls = function () {
         ${S.kr20 != null ? `<p class="small muted" style="margin:0">Test ishonchliligi (KR-20): <b>${S.kr20}</b> ${S.kr20 >= 0.8 ? '— yaxshi' : S.kr20 >= 0.6 ? "— o'rtacha" : '— past'}</p>` : ''}</div>
       <div class="card"><h3>Rasch hisoblash</h3>
         <div class="grid2"><label class="f"><span>Usul</span><select class="in" id="rmode">${RASCH_MODES.map(([k, l]) => `<option value="${k}" ${st.raschMode === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-        <label class="f"><span>Maksimal ball</span><input class="in" id="rmax" type="number" min="10" max="1000" value="${st.raschMax}"></label></div>
-        <p class="small muted" style="margin:0">${RASCH_DESC[st.raschMode] || ''}${R.few ? ' <b class="bad">Ishtirokchi kam — natija taxminiy.</b>' : ''}</p></div>
+        ${st.raschMode === 'weighted' ? `<label class="f"><span>Savollar ballari yig'indisi</span><input class="in" id="rmax" type="number" min="10" max="1000" value="${st.raschMax}"></label>` : `<label class="f"><span>Maksimal ball</span><input class="in" value="Chegarasiz (shartli 75)" disabled></label>`}</div>
+        <p class="small muted" style="margin:0">${RASCH_DESC[st.raschMode] || ''}${R.few ? ' <b class="bad">Ishtirokchi kam — natija taxminiy.</b>' : ''}</p>${st.raschMode !== 'weighted' ? `<p class="small muted" style="margin:6px 0 0">Hisob: ${R.method || 'CML'} · θ o'rtacha ${R.mu} · standart og'ish ${R.sd}</p>` : ''}</div>
       <div class="btns" style="margin:0 0 12px"><button class="btn pri sm" id="xx">⬇ Excel (to'liq hisob)</button><button class="btn sm" id="xp">PDF</button><button class="btn sm" id="xi">Ilovaga test sifatida saqlash</button></div>
       <div class="card tw" style="padding:4px 8px"><table class="t"><thead><tr><th>#</th><th>O'quvchi</th><th class="num">Ball</th><th>Daraja</th><th class="num">OTM foizi</th><th class="num">Xom ball</th><th class="num">%</th><th class="num">✓/✗/○</th>${R.sections.map(s => `<th class="num">${esc(s.title)}</th>`).join('')}</tr></thead><tbody>
         ${R.rows.map(r => `<tr><td>${r.rank}</td><td><b>${esc(r.name)}</b><div class="small muted">${esc(r.roll)}</div></td><td class="num"><b>${r.rasch.T}</b></td><td><span class="pill">${r.rasch.grade}</span></td><td class="num">${r.rasch.otm}%</td><td class="num">${r.points}</td><td class="num">${r.percent}</td><td class="num">${r.correct}/${r.wrong}/${r.blank}</td>${r.sections.map(s => `<td class="num">${s.points}</td>`).join('')}</tr>`).join('')}
@@ -61,7 +61,7 @@ V.xls = function () {
     $$('[data-w]').forEach(inp => inp.onchange = () => { st.sections[+inp.dataset.w].weight = Math.max(0, parseFloat(inp.value) || 0); recompute(); });
     $('#neg').onchange = e => { st.negative = Math.max(0, parseFloat(e.target.value) || 0); recompute(); };
     $('#rmode').onchange = e => { st.raschMode = e.target.value; recompute(); };
-    $('#rmax').onchange = e => { st.raschMax = Math.max(10, Math.min(1000, parseFloat(e.target.value) || 75)); recompute(); };
+    if ($('#rmax')) $('#rmax').onchange = e => { st.raschMax = Math.max(10, Math.min(1000, parseFloat(e.target.value) || 75)); recompute(); };
     $('#xx').onclick = () => shareOrDownload(new Blob([XLSX.write(XlsCalc.toWorkbook(XLSX, st.R), { bookType: 'xlsx', type: 'array' })], { type: 'application/octet-stream' }), `hisob_${PDF.fname(st.file.replace(/\.\w+$/, ''))}.xlsx`);
     $('#xp').onclick = async () => {
       const doc = await PDF.doc('l');
@@ -85,7 +85,7 @@ V.xls = function () {
     const key = R.key.map(k => (k === 'True' ? 'A' : k === 'False' ? 'B' : k && k.includes(',') ? Core.encSet(k.split(',')) : k || '-')).join('');
     const name = (R.exam || st.file.replace(/\.\w+$/, '')).trim();
     const g = { id: DB.id(), name: 'Import: ' + name, teacherId: DB.me().id, createdAt: new Date().toISOString() };
-    const t = { id: DB.id(), type: 'rasch', rasch: { mode: st.raschMode || 'rasch', max: st.raschMax || 75 }, name, date: today(), sections, variants: [{ code: 'A', key }], groupIds: [g.id], createdAt: new Date().toISOString(), createdBy: DB.me().id, source: 'excel' };
+    const t = { id: DB.id(), type: 'rasch', rasch: { mode: st.raschMode || 'bmba', max: st.raschMax || 75 }, name, date: today(), sections, variants: [{ code: 'A', key }], groupIds: [g.id], createdAt: new Date().toISOString(), createdBy: DB.me().id, source: 'excel' };
     DB.data.groups.push(g);
     DB.data.tests.push(t);
     let created = 0, matched = 0;

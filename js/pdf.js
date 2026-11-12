@@ -94,7 +94,7 @@ const PDF = {
       const info = Core.qInfo(test);
       const items = info.map((x, i) => {
         const right = rows.filter(r => r.ev.marks[i] === 1).length;
-        return [i + 1, T(x.sec.title), right, Math.round(right / rows.length * 100) + '%', rasch ? rasch.items[i].b : '', rasch ? rasch.items[i].w : ''];
+        return [i + 1, T(x.sec.title), right, Math.round(right / rows.length * 100) + '%', rasch ? rasch.items[i].b : '', rasch && rasch.cfg.mode === 'weighted' ? rasch.items[i].w : ''];
       });
       this.tbl(doc, { head: [['Savol', T("Bo'lim"), T("To'g'ri javoblar"), '%', rasch ? 'Qiyinlik (b)' : '', rasch ? 'Savol balli' : '']], body: items, startY: 22, theme: 'grid', styles: { fontSize: 9, halign: 'center' } });
     }

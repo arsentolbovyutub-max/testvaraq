@@ -29,6 +29,13 @@ Qog'oz javob varaqalarini telefon kamerasi bilan tekshirish, blok (DTM), oddiy v
 - **PDF'larda kirill va o'zbek harflari to'g'ri chiqadi** (DejaVu Sans shrifti).
 - **Testlar va natijalarni Excel'ga eksport qilish mumkin.**
 
+## Rasch hisoblash (2.2 — asosiy)
+
+- Savol qiyinligi — **CML** (shartli eng katta ehtimollik, Rasch modelining aniq usuli); o'quvchi qobiliyati θ — MLE (0 va to'liq natijada WLE).
+- Standart usul — **Milliy sertifikat (BMBA)**: Z = (θ − μ)/σ, ball = 50 + 10·Z. **Yuqori chegara yo'q** ("maksimal ball shartli"): kuchli o'quvchi 75 dan ham yuqori oladi.
+- OTM foizi: 65+ → 100%, 46–65 → ball/65, 46 dan past → 0. Darajalar: A+ ≥ 70, A ≥ 65, B+ ≥ 60, B ≥ 55, C+ ≥ 50, C ≥ 46, aks holda NC.
+- Qo'shimcha usullar: σ siz (50 + 10·(θ − μ)) va "savol qiyinligi bo'yicha ball".
+
 ## Rasch hisoblash (2.1)
 
 - Yangi test standart holatda **Rasch**: savol balli o'quvchilarning javoblari bo'yicha aniqlanadi — kam topilgan (qiyin) savolga ko'p ball, ko'p topilganiga kam ball; barcha savollar yig'indisi = maksimal ball (standart 75). Qiyinlik — Rasch modeli (JML), hamma topgan / hech kim topmagan savollar kalibrovkadan chiqariladi.

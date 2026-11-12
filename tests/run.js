@@ -22,3 +22,12 @@ try {
   const f = process.argv[2];
   if (f) { const a = X.analyze(XLSX, XLSX.readFile(f)); console.log(a.error || JSON.stringify(a.result.checks)); }
 } catch (e) { console.log('(xlsx moduli o‘rnatilmagan — Excel testi o‘tkazib yuborildi)'); }
+// Rasch: yuqori chegara yo'q (maksimal ball shartli)
+{
+  const rs = [];
+  for (let i = 0; i < 25; i++) { const k = Math.round(3 + i * 0.6); rs.push({ id: 'r' + i, variant: 'A', answers: 'A'.repeat(k) + 'B'.repeat(30 - k) }); }
+  rs.push({ id: 'top', variant: 'A', answers: 'A'.repeat(30) });
+  const R = Core.rasch({ type: 'rasch', sections: [{ count: 30, kind: 'choice', options: 4 }], variants: [{ code: 'A', key: 'A'.repeat(30) }], rasch: { mode: 'bmba' } }, rs);
+  assert(R.byResult.top.T > 75, 'T 75 dan oshishi kerak');
+  console.log('rasch uncapped OK', R.byResult.top.T, R.method);
+}

@@ -162,17 +162,64 @@
     /* ---------------- RASCH ----------------
        Savollar 0/1 (yozma javob ham alohida savol). Qiyinlik (b) — shu testni yechgan hammaning javoblari bo'yicha (JML).
        Hamma topgan / hech kim topmagan savollar kalibrovkadan chiqariladi (ular o'quvchilarni ajratmaydi).
-       Ikki usul:
-         'weighted' — savol qiyinligi bo'yicha ball: kam topilgan (qiyin) savolga ko'p ball, ko'p topilganiga kam ball.
-                      Barcha savol ballari yig'indisi = maksimal ball (standart 75). O'quvchi balli = topgan savollari ballari yig'indisi.
-         'bmba'     — Milliy sertifikat (BMBA) usuli: θ (WLE) → Z = (θ − μ)/σ → T = 50 + 10·Z, [0; maksimal] oralig'ida. */
+       Savol qiyinligi (b) — CML (shartli eng katta ehtimollik, Rasch modelining aniq usuli); θ — MLE, 0 va to'liq natijada WLE.
+       Usullar:
+         'bmba'     — Milliy sertifikat (BMBA) rasmiy formulasi: Z = (θ − μ)/σ, T = 50 + 10·Z. Yuqori chegara YO'Q
+                      ("maksimal ball shartli"): kuchli o'quvchi 75 dan ham yuqori olishi mumkin.
+         'rasch'    — T = 50 + 10·(θ − μ) (σ ga bo'linmaydi; ba'zi repetitsion test hisobotlaridagi usul). Chegara yo'q.
+         'weighted' — savol qiyinligi bo'yicha ball: qiyin savolga ko'p ball; barcha savollar yig'indisi = tanlangan ball. */
     raschCfg(test) {
       const r = test.rasch || {};
-      return { mode: ['weighted', 'bmba', 'rasch'].includes(r.mode) ? r.mode : 'rasch', max: r.max > 0 ? +r.max : 75 };
+      return { mode: ['weighted', 'bmba', 'rasch'].includes(r.mode) ? r.mode : 'bmba', max: r.max > 0 ? +r.max : 75 };
     },
 
-    /* Savollar qiyinligini baholash (JML). X: o'quvchilar x savollar (0/1). */
+    /* Elementar simmetrik funksiyalar γ_0..γ_L (CML uchun). */
+    esf(eps) {
+      const g = new Array(eps.length + 1).fill(0); g[0] = 1;
+      for (let i = 0; i < eps.length; i++) for (let r = i + 1; r >= 1; r--) g[r] += eps[i] * g[r - 1];
+      return g;
+    },
+    /* Savollar qiyinligi — CML. Hamma topgan / hech kim topmagan savollar va 0 / to'liq natijali o'quvchilar hisobga olinmaydi. */
     raschCalibrate(X) {
+      const P = X.length, I = P ? X[0].length : 0;
+      const s = Array.from({ length: I }, (_, i) => X.reduce((a, r) => a + r[i], 0));
+      const act = s.map(v => v > 0 && v < P);
+      const idx = act.map((a, i) => (a ? i : -1)).filter(i => i >= 0);
+      const L = idx.length;
+      const raw = X.map(r => idx.reduce((a, i) => a + r[i], 0));
+      const nr = new Array(L + 1).fill(0);
+      raw.forEach(r => { if (r > 0 && r < L) nr[r]++; });
+      const N = nr.reduce((a, x) => a + x, 0);
+      const si = idx.map(i => X.reduce((a, r, p) => a + (raw[p] > 0 && raw[p] < L ? r[i] : 0), 0));
+      if (L < 2 || N < 2 || si.some(v => v <= 0 || v >= N)) return this.raschCalibrateJML(X);
+      let b = si.map(v => Math.log((N - v) / v));
+      let m = b.reduce((a, x) => a + x, 0) / L; b = b.map(x => x - m);
+      let ok = false;
+      for (let it = 0; it < 300; it++) {
+        const eps = b.map(x => Math.exp(-x)), g = this.esf(eps);
+        let md = 0;
+        const nb = b.slice();
+        for (let k = 0; k < L; k++) {
+          const gk = this.esf(eps.filter((_, j) => j !== k));
+          let E = 0, V = 0;
+          for (let r = 1; r < L; r++) { if (!nr[r]) continue; const p = eps[k] * gk[r - 1] / g[r]; E += nr[r] * p; V += nr[r] * p * (1 - p); }
+          const d = Math.max(-1, Math.min(1, (E - si[k]) / (V || 1e-9)));
+          nb[k] = b[k] + d; md = Math.max(md, Math.abs(d));
+        }
+        m = nb.reduce((a, x) => a + x, 0) / L; b = nb.map(x => x - m);
+        if (!b.every(Number.isFinite)) break;
+        if (md < 1e-8) { ok = true; break; }
+      }
+      if (!ok && !b.every(x => Number.isFinite(x) && Math.abs(x) < 15)) return this.raschCalibrateJML(X);
+      const full = new Array(I).fill(0);
+      idx.forEach((i, k) => { full[i] = b[k]; });
+      const lo = Math.min(...b), hi = Math.max(...b);
+      for (let i = 0; i < I; i++) if (!act[i]) full[i] = s[i] >= P ? lo - 1 : hi + 1;
+      return { b: full, act, s, few: P < 3, method: 'CML' };
+    },
+
+    /* Zaxira: JML (juda kichik yoki mukammal Guttman ma'lumotida). */
+    raschCalibrateJML(X) {
       const P = X.length, I = P ? X[0].length : 0;
       const sig = x => 1 / (1 + Math.exp(-x));
       const s = Array.from({ length: I }, (_, i) => X.reduce((a, r) => a + r[i], 0));
@@ -211,7 +258,7 @@
       const ba = b.filter((_, i) => act[i]);
       const lo = ba.length ? Math.min(...ba) : 0, hi = ba.length ? Math.max(...ba) : 0;
       for (let i = 0; i < I; i++) if (!act[i] && P) b[i] = s[i] >= P ? lo - 1 : hi + 1;   // hamma topgan: eng oson; hech kim: eng qiyin
-      return { b, act, s, few: P < 3 || nAct < 2 };
+      return { b, act, s, few: P < 3 || nAct < 2, method: 'JML' };
     },
 
     /* Qobiliyat θ — WLE (Warm): 0 va maksimal natijalar uchun ham chekli qiymat. */
@@ -269,19 +316,18 @@
       const out = X.map(x => {
         const pts = x.map((v, i) => (v ? w[i] : 0));
         const weighted = round2(Math.min(cfg.max, pts.reduce((a, y) => a + y, 0)));
-        return { pts, weighted, theta: this.raschWLE(x, C.b, C.act), mle: this.raschMLE(x, C.b, C.act), raw: x.reduce((a, y) => a + y, 0) };
+        return { pts, weighted, theta: this.raschMLE(x, C.b, C.act), raw: x.reduce((a, y) => a + y, 0) };
       });
       const th = out.map(o => o.theta);
       const mu = P ? th.reduce((a, y) => a + y, 0) / P : 0;
       const sd = P > 1 ? Math.sqrt(th.reduce((a, y) => a + (y - mu) ** 2, 0) / (P - 1)) : 0;
-      const mm = P ? out.reduce((a, o) => a + o.mle, 0) / P : 0;
       out.forEach(o => {
         o.Z = sd > 1e-9 ? (o.theta - mu) / sd : 0;
-        o.T = round2(Math.max(0, Math.min(cfg.max, 50 + 10 * o.Z)));               // BMBA: Z = (θ − μ)/σ
-        o.R = round2(Math.max(0, Math.min(cfg.max, 50 + 10 * (o.mle - mm))));      // Rasch T: 50 + 10·(θ − μ), logit birligida
+        o.T = round2(Math.max(0, 50 + 10 * o.Z));                 // BMBA: Z = (θ − μ)/σ, T = 50 + 10·Z — yuqori chegara yo'q
+        o.R = round2(Math.max(0, 50 + 10 * (o.theta - mu)));       // σ siz variant
         o.score = cfg.mode === 'bmba' ? o.T : cfg.mode === 'rasch' ? o.R : o.weighted;
       });
-      return { rows: out, b: C.b, w, s: C.s, few: C.few, mu, sd };
+      return { rows: out, b: C.b, w, s: C.s, few: C.few, mu, sd, method: C.method };
     },
 
     rasch(test, results) {
@@ -296,9 +342,10 @@
       results.forEach((r, k) => {
         const o = M.rows[k];
         const T = round2(o.score);
-        byResult[r.id] = { theta: round2(o.theta), T, grade: this.grade(T * 75 / cfg.max), otm: this.otmPercent(T * 75 / cfg.max), raw: o.raw, pts: o.pts, weighted: o.weighted, bmba: o.T, rasch: o.R };
+        const g75 = cfg.mode === 'weighted' ? T * 75 / cfg.max : T;
+        byResult[r.id] = { theta: round2(o.theta), Z: round2(o.Z), T, grade: this.grade(g75), otm: this.otmPercent(g75), raw: o.raw, pts: o.pts, weighted: o.weighted, bmba: o.T, rasch: o.R };
       });
-      return { byResult, items, few: M.few, cfg };
+      return { byResult, items, few: M.few, cfg, method: M.method, mu: round2(M.mu), sd: round2(M.sd) };
     },
 
     /* Reyting (teng ballarga bir xil o'rin). studentOf(r) -> student. */
